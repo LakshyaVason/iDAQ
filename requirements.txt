@@ -1,0 +1,12 @@
+# Core ML / LLM dependencies
+transformers>=4.44.0
+accelerate>=0.33.0
+sentencepiece   # needed for LLaMA-style tokenizers
+protobuf        # fixes serialization issues
+
+# Utility
+python-dotenv>=1.0.0
+
+# Optional: GPU-friendly extras (comment out if you hit issues)
+safetensors     # faster model loading
+bitsandbytes    # quantization support if GPU drivers allow
