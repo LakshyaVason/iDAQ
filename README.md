@@ -1,3 +1,6 @@
+Run: uvicorn main:app --reload
+Then open http://127.0.0.1:8000/docs
+
 ```mermaid
 flowchart TD
     A["Power Electronics Circuit(Lab Setup)"] --> B["Data Acquisition & Labeling(Oscilloscope / DAQ / Lab)"]
