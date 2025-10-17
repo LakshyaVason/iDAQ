@@ -1,252 +1,154 @@
 """
-Streamlit application for training a fault detection model on power electronics data
-and interacting with a local large language model (LLM) to ask questions about
-the data.  The app is designed for use with datasets similar to the
-Grid‑connected PV System Faults (GPVS‑Faults) dataset, which contain time
-series measurements of voltage, current and other electrical signals under
-various operating conditions and faults.  Users can manually upload CSV files
-for training and testing, build a simple classification model to detect fault
-types, and use an LLM chat interface to explore the data and results.
+LangChain + LangServe application for Power Electronics Fault Detection and LLM interaction.
 
 Features
 --------
-* Upload one or more training CSV files and one or more testing CSV files.
-* Automatically assign fault labels based on file names (e.g. files starting
-  with ``F1`` are labelled fault type 1).  A zero fault type denotes normal
-  operation.
-* Train a scikit‑learn ``RandomForestClassifier`` on the numeric features
-  (dropping the ``Time`` column).  The trained model predicts the fault
-  category for each row in the test dataset.
-* Display a classification report and confusion matrix to evaluate model
-  performance.
-* Summarise the distribution of fault types in the training dataset.
-* Provide a chat interface powered by a Hugging Face LLM (e.g. Meta Llama 3)
-  for conversational queries about the data and results, using LangChain.
+1. Train a RandomForestClassifier on uploaded CSV data (fault detection model)
+2. Query an LLM (Meta-Llama 3.1 8B) for explanations or diagnostic reasoning
+3. Expose REST API endpoints for chat and ML training/evaluation
+4. Runs on Jetson Nano (CUDA or CPU)
 """
 
 import os
-import re
-from typing import List, Tuple, Any
-
 import torch
 import pandas as pd
 import numpy as np
+from fastapi import FastAPI, UploadFile, File
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+from langserve import add_routes
+from langchain.llms import HuggingFacePipeline
+from langchain.chains import ConversationChain
+from langchain.memory import ConversationBufferMemory
+from langchain.tools import tool
+from transformers import pipeline
+from dotenv import load_dotenv
 
-# Try to import transformers. It is optional – if unavailable the chat
-# interface will be disabled.
-try:
-    from transformers import pipeline
-    TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    TRANSFORMERS_AVAILABLE = False
+# ────────────────────────────────────────────────────────────────
+# Load environment and model configuration
+# ────────────────────────────────────────────────────────────────
+load_dotenv()
 
-# Import LangChain components for LLM support
-try:
-    from langchain.llms import HuggingFacePipeline
-    from langchain.chains import ConversationChain
-    from langchain.memory import ConversationBufferMemory
-    LANGCHAIN_AVAILABLE = True
-except ImportError:
-    LANGCHAIN_AVAILABLE = False
+HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_ID = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
 
-def load_and_label(files: List[Any]) -> pd.DataFrame:
-    """Load one or more CSV files and assign a fault_type label based on the file name."""
-    data_frames = []
-    for f in files:
-        df = pd.read_csv(f)
-        match = re.match(r"F(\d)", f.name)
-        fault_num = int(match.group(1)) if match else 0
-        df["fault_type"] = fault_num
-        data_frames.append(df)
-    return pd.concat(data_frames, ignore_index=True) if data_frames else pd.DataFrame()
+# ────────────────────────────────────────────────────────────────
+# Initialize the Hugging Face pipeline
+# ────────────────────────────────────────────────────────────────
+print(f"Loading model: {MODEL_ID}...")
+pipe = pipeline(
+    "text-generation",
+    model=MODEL_ID,
+    token=HF_TOKEN,
+    device=0 if torch.cuda.is_available() else -1,
+    dtype=torch.bfloat16 if torch.cuda.is_available() else None,
+)
+llm = HuggingFacePipeline(pipeline=pipe)
 
-def train_random_forest(df: pd.DataFrame) -> Tuple[RandomForestClassifier, dict]:
-    """Train a RandomForestClassifier to predict fault_type."""
-    X = df.drop(columns=["fault_type"])
+# LangChain memory + conversation chain
+memory = ConversationBufferMemory()
+chat_chain = ConversationChain(llm=llm, memory=memory)
+
+# ────────────────────────────────────────────────────────────────
+# Fault Detection Tool (Train / Evaluate)
+# ────────────────────────────────────────────────────────────────
+MODEL_PATH = "trained_fault_model.pkl"
+
+
+@tool
+def train_fault_classifier(file_path: str) -> str:
+    """Train a RandomForest classifier on fault detection dataset."""
+    print(f"Training on: {file_path}")
+    df = pd.read_csv(file_path)
+
+    if "fault_type" not in df.columns:
+        return "Dataset must include a 'fault_type' column."
+
+    X = df.drop(columns=["fault_type"], errors="ignore")
     if "Time" in X.columns:
         X = X.drop(columns=["Time"])
     y = df["fault_type"].astype(int)
     numeric_cols = X.select_dtypes(include=[np.number]).columns
     X = X[numeric_cols].fillna(X.mean())
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-    clf = RandomForestClassifier(
-        n_estimators=200,
-        random_state=42,
-        n_jobs=-1,
-        class_weight="balanced"
-    )
-    clf.fit(X_train, y_train)
-    y_pred = clf.predict(X_val)
-    report = classification_report(y_val, y_pred, output_dict=True)
-    return clf, report
 
-def generate_classification_report(report: dict) -> str:
-    """Format the classification report dictionary into a readable string."""
-    lines = []
-    header = f"{'Class':<10} {'Precision':<10} {'Recall':<10} {'F1‑Score':<10} {'Support':<10}"
-    lines.append(header)
-    lines.append("-" * len(header))
-    for cls, metrics in report.items():
-        if cls in {"accuracy", "macro avg", "weighted avg"}:
-            continue
-        precision = metrics.get("precision", 0)
-        recall = metrics.get("recall", 0)
-        f1 = metrics.get("f1-score", 0)
-        support = metrics.get("support", 0)
-        lines.append(f"{cls:<10} {precision:<10.2f} {recall:<10.2f} {f1:<10.2f} {support:<10}")
-    acc = report.get("accuracy", 0)
-    lines.append("\nOverall accuracy: {:.2f}".format(acc))
-    return "\n".join(lines)
+    clf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+    clf.fit(X, y)
 
-def load_llm_chain():
-    """Load a HuggingFace model via LangChain and wrap it in a ConversationChain."""
-    if not TRANSFORMERS_AVAILABLE or not LANGCHAIN_AVAILABLE:
-        return None, None
-    try:
-        from dotenv import load_dotenv  # type: ignore
-        load_dotenv()
-    except Exception:
-        pass
-    hf_token = os.getenv("HF_TOKEN")
-    if hf_token is None:
-        return None, None
-    model_id = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
-    try:
-        hf_pipeline = pipeline(
-            "text-generation",
-            model=model_id,
-            token=hf_token,
-            device=0,
-            dtype=torch.bfloat16 if hasattr(torch, "bfloat16") else None,
-        )
-        llm = HuggingFacePipeline(pipeline=hf_pipeline)
-        memory = ConversationBufferMemory()
-        chain = ConversationChain(llm=llm, memory=memory)
-        return chain, model_id
-    except Exception:
-        return None, None
+    # Save trained model
+    import joblib
+    joblib.dump(clf, MODEL_PATH)
 
-def app() -> None:
-    """Run the Streamlit application."""
-    import streamlit as st  # type: ignore
+    return f"✅ Trained RandomForest model with {len(df)} samples."
 
-    st.set_page_config(page_title="Power Electronics Fault Detection", layout="wide")
-    st.title("🔌 Power Electronics Fault Detection Tool")
 
-    st.markdown(
-        """
-        This tool helps you train a simple machine learning model to detect
-        electrical faults in power electronics data and interact with an
-        optional large language model (LLM) to ask questions about your data.
-        """
-    )
+@tool
+def evaluate_fault_classifier(file_path: str) -> str:
+    """Evaluate trained RandomForest classifier on test dataset."""
+    import joblib
+    if not os.path.exists(MODEL_PATH):
+        return "No trained model found. Please train the model first."
 
-    st.sidebar.header("Dataset upload")
-    st.sidebar.markdown(
-        "Upload CSV files for training and testing. Each file's name must begin with 'F0'–'F7' indicating the fault type."
-    )
-    train_files = st.sidebar.file_uploader(
-        "Training CSV files", accept_multiple_files=True, type=["csv"]
-    )
-    test_files = st.sidebar.file_uploader(
-        "Testing CSV files", accept_multiple_files=True, type=["csv"]
-    )
+    df = pd.read_csv(file_path)
+    clf = joblib.load(MODEL_PATH)
 
-    train_df = load_and_label(train_files) if train_files else pd.DataFrame()
-    test_df  = load_and_label(test_files)  if test_files  else pd.DataFrame()
+    X_test = df.drop(columns=["fault_type"], errors="ignore")
+    if "Time" in X_test.columns:
+        X_test = X_test.drop(columns=["Time"])
+    numeric_cols = X_test.select_dtypes(include=[np.number]).columns
+    X_test = X_test[numeric_cols].fillna(X_test.mean())
 
-    if not train_df.empty:
-        st.subheader("Training Data Summary")
-        fault_counts = train_df["fault_type"].value_counts().sort_index()
-        fault_summary_df = pd.DataFrame({
-            "Fault Type": fault_counts.index,
-            "Count": fault_counts.values,
-        })
-        st.table(fault_summary_df)
-    else:
-        st.info("Upload training files to see a summary and train the model.")
+    y_test = df["fault_type"].astype(int)
+    y_pred = clf.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+    report = classification_report(y_test, y_pred)
 
-    model = None
-    report = None
-    if not train_df.empty and st.button("Train Model"):
-        with st.spinner("Training the random forest model…"):
-            model, report = train_random_forest(train_df)
-        st.success("Model training complete!")
-        st.subheader("Validation Metrics")
-        report_str = generate_classification_report(report)
-        st.text(report_str)
+    return f"✅ Evaluation complete.\nAccuracy: {acc:.3f}\n\n{report}"
 
-    if model is not None and not test_df.empty and st.button("Evaluate on Test Data"):
-        with st.spinner("Evaluating on test set…"):
-            X_test = test_df.drop(columns=["fault_type"], errors="ignore")
-            if "Time" in X_test.columns:
-                X_test = X_test.drop(columns=["Time"])
-            numeric_cols = X_test.select_dtypes(include=[np.number]).columns
-            X_test = X_test[numeric_cols].fillna(X_test.mean())
-            y_test = test_df["fault_type"].astype(int)
-            y_pred = model.predict(X_test)
-            acc = accuracy_score(y_test, y_pred)
-            st.write(f"Test accuracy: {acc:.2f}")
-            cm = confusion_matrix(y_test, y_pred)
-            cm_df = pd.DataFrame(
-                cm,
-                index=[f"True F{i}" for i in range(cm.shape[0])],
-                columns=[f"Pred F{i}" for i in range(cm.shape[1])],
-            )
-            st.subheader("Confusion Matrix")
-            st.table(cm_df)
 
-    st.subheader("📢 Chat with the LLM")
-    st.markdown(
-        "Ask questions about your dataset, fault detection results or general power electronics.\n"
-        "This uses a LangChain `ConversationChain` if a suitable LLM is available."
-    )
-    if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert electrical engineer and data scientist. "
-                    "Answer questions concisely about power electronics, fault detection and the user's data."
-                ),
-            }
-        ]
+# ────────────────────────────────────────────────────────────────
+# FastAPI + LangServe Integration
+# ────────────────────────────────────────────────────────────────
+app = FastAPI(title="LLM-Powered Power Electronics Fault Detection API")
 
-    if "llm_chain" not in st.session_state:
-        chain, model_id = load_llm_chain()
-        st.session_state.llm_chain = chain
-        st.session_state.llm_model_id = model_id
+# Add LangChain chat route
+add_routes(app, chat_chain, path="/chat")
 
-    for msg in st.session_state.messages:
-        if msg["role"] == "assistant":
-            st.chat_message("assistant").markdown(msg["content"])
-        elif msg["role"] == "user":
-            st.chat_message("user").markdown(msg["content"])
+# Add ML endpoints (manual file upload routes)
+@app.post("/train")
+async def train_file(file: UploadFile = File(...)):
+    file_path = f"./uploads/{file.filename}"
+    os.makedirs("uploads", exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+    result = train_fault_classifier.run(file_path)
+    return {"message": result}
 
-    user_input = st.chat_input("Ask a question…")
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        chain = st.session_state.llm_chain
-        if chain is not None:
-            try:
-                with st.spinner("Generating response…"):
-                    assistant_reply = chain.predict(input=user_input)
-            except Exception:
-                assistant_reply = (
-                    "I couldn't generate a response due to an error. "
-                    "Please check your model configuration."
-                )
-        else:
-            assistant_reply = (
-                "The LLM is not available. Please set HF_TOKEN and install the required packages."
-            )
-        st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-        st.chat_message("assistant").markdown(assistant_reply)
 
+@app.post("/evaluate")
+async def evaluate_file(file: UploadFile = File(...)):
+    file_path = f"./uploads/{file.filename}"
+    os.makedirs("uploads", exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+    result = evaluate_fault_classifier.run(file_path)
+    return {"message": result}
+
+
+@app.get("/")
+async def root():
+    return {
+        "status": "running",
+        "description": "LangServe-based LLM + Fault Detection API",
+        "model": MODEL_ID,
+        "gpu_enabled": torch.cuda.is_available(),
+    }
+
+
+# ────────────────────────────────────────────────────────────────
+# Run: uvicorn main:app --reload
+# Then open http://127.0.0.1:8000/docs
+# ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app()
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
