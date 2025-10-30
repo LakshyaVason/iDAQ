@@ -28,9 +28,19 @@ from dotenv import load_dotenv
 # Load environment and model configuration
 # ────────────────────────────────────────────────────────────────
 load_dotenv()
+os.environ.pop("PYTORCH_CUDA_ALLOC_CONF", None)
+
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 MODEL_ID = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+
+import os, torch
+
+# Disable allocator options not supported on Jetson
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+torch._C._set_allocator_settings = lambda *a, **kw: None
+
+
 
 # ────────────────────────────────────────────────────────────────
 # Initialize the Hugging Face pipeline
@@ -40,8 +50,8 @@ pipe = pipeline(
     "text-generation",
     model=MODEL_ID,
     token=HF_TOKEN,
-    device=0 if torch.cuda.is_available() else -1,
-    dtype=torch.bfloat16 if torch.cuda.is_available() else None,
+    device = 0,
+    # dtype=torch.float32,
 )
 llm = HuggingFacePipeline(pipeline=pipe)
 
