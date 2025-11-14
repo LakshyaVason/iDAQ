@@ -1,0 +1,20 @@
+[
+  {
+    "title": "DC bus undervoltage with thermal stress",
+    "fault_type": "Inverter sag",
+    "symptoms": "Output voltage droop, rising switch temperature, slight vibration increase",
+    "diagnostic_steps": "Check DC link capacitors, confirm gate driver supply levels, inspect cooling path"
+  },
+  {
+    "title": "IGBT short detection",
+    "fault_type": "Power stage short",
+    "symptoms": "Instant current spike, trip of fast acting fuse, audible click",
+    "diagnostic_steps": "Isolate half bridge, test gate leakage, verify snubber integrity"
+  },
+  {
+    "title": "Motor bearing wear",
+    "fault_type": "Mechanical",
+    "symptoms": "High vibration at specific frequencies, gradual efficiency loss",
+    "diagnostic_steps": "Perform spectral vibration analysis, inspect lubrication, schedule maintenance"
+  }
+]
