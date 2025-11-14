@@ -14,9 +14,7 @@ python-dotenv>=1.0.0
 pandas
 scikit-learn
 joblib
-numpy
-
-# LangChain ecosystem
+# LangChain stack
 langchain
 langserve[all]
 fastapi
