@@ -1,14 +1,10 @@
-# LLM and local inference
-ollama  # ✅ REQUIRED for calling local Ollama models
-
-# Remove transformers if not needed for generation/embedding
-# If still needed (e.g. OpenAI API, tokenizer etc), pin to stable:
-transformers==4.34.1
+# Core ML / LLM dependencies
+transformers>=4.44.0
 accelerate>=0.33.0
 sentencepiece
 protobuf
-safetensors
 python-dotenv>=1.0.0
+safetensors
 
 # ML + analytics
 pandas
@@ -16,11 +12,22 @@ scikit-learn
 joblib
 numpy
 
-# LangChain ecosystem
+# HTTP and templating utilities
 requests
-# LangChain stack
+jinja2
+python-multipart  # Needed for FastAPI file uploads
+
+# LangChain ecosystem and serving
 langchain
+langchain-community
 langserve[all]
+
 fastapi
 uvicorn
-langchain-community
+
+# Additional dependencies for PDF ingestion and vector search
+faiss-cpu
+langchain-text-splitters
+
+# Optional: Python wrapper for Ollama (not required if using direct HTTP)
+ollama
