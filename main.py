@@ -1,11 +1,11 @@
 """
-LangServe-based API for Power Electronics Fault Detection & Nemotron embeddings.
+LangServe-style API for Power Electronics Fault Detection using Ollama + Llama3.2:1b for local embeddings.
 
 Features:
 1. Train a RandomForestClassifier on uploaded CSV data.
 2. Evaluate the classifier on test data.
-3. Provide an embedding service via NVIDIA's omni-embed-nemotron-3b model (8-bit).
-4. Runs on Jetson Orin Nano with PyTorch 2.5 and CUDA support (no bitsandbytes).
+3. Provide local embedding service via Ollama's Llama3.2:1b model.
+4. Runs on Jetson Orin Nano with PyTorch 2.5 and CUDA.
 """
 
 import os
@@ -16,42 +16,29 @@ from fastapi import FastAPI, UploadFile, File
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from langchain.tools import tool
-from transformers import AutoTokenizer, AutoModel
 from pydantic import BaseModel
+import requests
 
-MODEL_ID = "nvidia/omni-embed-nemotron-3b"
+OLLAMA_ENDPOINT = "http://localhost:11434/api/generate"
+MODEL_NAME = "llama3.2:1b"
 
-print(f"🔹 Loading {MODEL_ID} in 8-bit mode …")
-print(f"🔹 CUDA available: {torch.cuda.is_available()}")
-
-# Load model with 8-bit weight quantization via Transformers
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
-
-model = AutoModel.from_pretrained(
-    MODEL_ID,
-    trust_remote_code=True,
-    torch_dtype=torch.float16,
-    device_map="cuda" if torch.cuda.is_available() else "cpu",
-    low_cpu_mem_usage=True,
-    attn_implementation="eager",  # Needed for Jetson support
-)
-
-model.eval()
-print("✅ Model loaded successfully.")
+print(f"🔹 Using Ollama model: {MODEL_NAME}")
 
 # -----------------------------------------------------------
-# Embedding Function
+# Embedding Function (via Ollama)
 # -----------------------------------------------------------
 def get_embeddings(text: str):
-    """Generate embeddings using Nemotron model."""
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-    if torch.cuda.is_available():
-        inputs = {k: v.cuda() for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model(**inputs)
-        embeddings = outputs.last_hidden_state.mean(dim=1)
-    return embeddings.cpu().numpy()
+    """Generate embeddings using local Ollama instance."""
+    payload = {
+        "model": MODEL_NAME,
+        "prompt": f"Return a numeric embedding for: {text}",
+        "options": {"embedding": True},
+        "stream": False
+    }
+    response = requests.post(OLLAMA_ENDPOINT, json=payload)
+    response.raise_for_status()
+    data = response.json()
+    return np.array(data.get("embedding", []))
 
 # -----------------------------------------------------------
 # Fault Classification Tools
@@ -96,7 +83,7 @@ def evaluate_fault_classifier(file_path: str) -> str:
 # -----------------------------------------------------------
 # FastAPI Application
 # -----------------------------------------------------------
-app = FastAPI(title="DAQ Fault Detection with Nemotron Embeddings")
+app = FastAPI(title="DAQ Fault Detection with Ollama LLM")
 
 class EmbedRequest(BaseModel):
     text: str
@@ -128,9 +115,8 @@ async def evaluate_file(file: UploadFile = File(...)):
 async def root():
     return {
         "status": "running",
-        "model": MODEL_ID,
-        "gpu_enabled": torch.cuda.is_available(),
-        "device": "CUDA" if torch.cuda.is_available() else "CPU",
+        "model": MODEL_NAME,
+        "ollama_url": OLLAMA_ENDPOINT
     }
 
 if __name__ == "__main__":

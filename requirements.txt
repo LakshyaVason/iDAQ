@@ -1,20 +1,24 @@
-# Core ML / LLM dependencies
-transformers>=4.44.0
+# LLM and local inference
+ollama  # ✅ REQUIRED for calling local Ollama models
+
+# Remove transformers if not needed for generation/embedding
+# If still needed (e.g. OpenAI API, tokenizer etc), pin to stable:
+transformers==4.34.1
 accelerate>=0.33.0
 sentencepiece
 protobuf
-python-dotenv>=1.0.0
 safetensors
-bitsandbytes
+python-dotenv>=1.0.0
 
-# ML + utilities
+# ML + analytics
 pandas
 scikit-learn
 joblib
-# LangChain stack
+numpy
+
+# LangChain ecosystem
 langchain
 langserve[all]
 fastapi
 uvicorn
 langchain-community
-
