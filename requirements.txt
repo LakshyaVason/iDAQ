@@ -11,6 +11,7 @@ bitsandbytes
 pandas
 scikit-learn
 joblib
+requests
 # LangChain stack
 langchain
 langserve[all]
