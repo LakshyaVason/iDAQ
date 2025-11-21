@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        h1 { margin-bottom: 1rem; }
+        form { margin-bottom: 1rem; }
+        input[type="file"] { margin-bottom: 0.5rem; }
+        button { padding: 0.5rem 1rem; }
+        .message { padding: 0.5rem; margin-top: 0.5rem; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <!-- Navigation bar for transitions between pages -->
+    <nav style="margin-bottom: 1rem;">
+        <a href="/user" style="background-color:#2196F3;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">User Dashboard</a>
+        <a href="/logout" style="background-color:#f44336;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">Logout</a>
+    </nav>
+
+    <h1>Admin Dashboard</h1>
+    <p>Upload training datasets and trigger model training.</p>
+
+    <h2>Upload Normal Dataset</h2>
+    <form method="post" action="/upload-normal" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv" required>
+        <br>
+        <button type="submit">Upload Normal CSV</button>
+    </form>
+
+    <h2>Upload Fault Dataset</h2>
+    <form method="post" action="/upload-fault" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".csv" required>
+        <br>
+        <button type="submit">Upload Fault CSV</button>
+    </form>
+
+    <h2>Train Models</h2>
+    <form method="post" action="/train">
+        <button type="submit">Train Classifier and Baseline</button>
+    </form>
+
+    <h2>Upload Datasheet PDF</h2>
+    <form method="post" action="/upload-pdf" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf" required>
+        <br>
+        <button type="submit">Upload PDF and Ingest</button>
+    </form>
+</body>
+</html>
