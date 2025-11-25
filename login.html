@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iDAQ Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        form { max-width: 300px; }
+        label { display: block; margin-bottom: 0.5rem; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 0.5rem; margin-top: 0.25rem; margin-bottom: 1rem; }
+        button { padding: 0.5rem 1rem; }
+    </style>
+</head>
+<body>
+    <h1>Admin Login</h1>
+    <form method="post" action="/login">
+        <label>
+            Username:
+            <input type="text" name="username" required>
+        </label>
+        <label>
+            Password:
+            <input type="password" name="password" required>
+        </label>
+        <button type="submit">Log In</button>
+    </form>
+</body>
+</html>

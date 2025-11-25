@@ -1,78 +1,120 @@
-# import os
-# import torch
-# from dotenv import load_dotenv
+#!/usr/bin/env python3
+"""test.py
 
-# # 1. Load environment variables
-# load_dotenv()
-# hf_token = os.getenv("HF_TOKEN")
-# if not hf_token:
-#     print("HF_TOKEN not found. Please ensure it's set in your .env file.")
-#     exit()
-# print("HF_TOKEN loaded successfully!")
+Quick local tester for Ollama model via the `ollama` CLI.
 
-# # 2. Import and install dependencies if needed
-# try:
-#     from transformers import pipeline
-# except ImportError:
-#     print("Transformers not found. Run: pip install transformers")
-#     exit()
-# try:
-#     import accelerate
-# except ImportError:
-#     print("Accelerate not found. Run: pip install accelerate")
-#     exit()
-# try:
-#     import torch
-# except ImportError:
-#     print("PyTorch not found. Run: pip install torch")
-#     exit()
+This script:
+- Verifies that the `ollama` CLI is available in PATH.
+- Optionally checks whether the requested model appears in `ollama list` output.
+- Runs a sample prompt against the model using `ollama run` (tries the common invocation styles).
 
-# # 3. Set up the model pipeline
-# model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
-# print(f"Loading model: {model_id}...")
-# try:
-#     pipe = pipeline(
-#         "text-generation",
-#         model=model_id,
-#         device_map="auto",
-#         # Use 'dtype' if your transformers version allows, otherwise use 'torch_dtype'
-#         dtype=torch.bfloat16,   # or dtype=torch.bfloat16
-#         token=hf_token,
-#     )
-# except Exception as e:
-#     print(f"Error loading model: {e}")
-#     print("Please ensure you have accepted the model's license on Hugging Face and have a GPU available.")
-#     exit()
-# print("Model loaded. You can now chat with your travel agent.")
-# print("Type 'quit' or 'exit' to end the conversation.")
+Usage:
+  python test.py --model llama3.2:1b --prompt "Say hello"
 
-# # 4. Chat loop with proper prompt formatting
-# messages = [
-#     {"role": "system", "content": "You are a friendly and expert travel agent. You help users plan their dream vacations by providing helpful and concise information."},
-# ]
-# while True:
-#     user_input = input("\nYou: ")
-#     if user_input.lower() in ["quit", "exit"]:
-#         break
-#     messages.append({"role": "user", "content": user_input})
+Notes:
+- This script uses the `ollama` executable (local Ollama install). It does not contact cloud APIs.
+"""
 
-#     # Format messages history into a prompt
-#     prompt = ""
-#     for m in messages:
-#         if m["role"] == "system":
-#             prompt += f"[SYSTEM] {m['content']}\n"
-#         elif m["role"] == "user":
-#             prompt += f"[USER] {m['content']}\n"
-#         elif m["role"] == "assistant":
-#             prompt += f"[ASSISTANT] {m['content']}\n"
+from __future__ import annotations
 
-#     response = pipe(prompt, max_new_tokens=512, temperature=0.7, top_p=0.95)
-#     generated_text = response[0]["generated_text"] if "generated_text" in response[0] else response[0]["text"]
-#     assistant_response = generated_text[len(prompt):].strip()
-#     print(f"\nTravel Agent: {assistant_response}")
-#     messages.append({"role": "assistant", "content": assistant_response})
+import argparse
+import shutil
+import subprocess
+import sys
+from typing import Optional, Tuple
 
 
-import torch
-print(torch.cuda.is_available())  # Should print True
-print(torch.cuda.get_device_name(0))  # Should print "NVIDIA GeForce RTX 3060"
+def run_cmd(cmd: list[str], timeout: int = 60) -> Tuple[int, str, str]:
+    """Run a command, return (returncode, stdout, stderr)."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+    except subprocess.TimeoutExpired as e:
+        return 124, "", f"timeout after {timeout}s"
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def check_ollama_cli() -> bool:
+    """Return True if 'ollama' is found in PATH."""
+    path = shutil.which("ollama")
+    if path:
+        print(f"Found ollama CLI at: {path}")
+        return True
+    print("'ollama' CLI not found in PATH. Install Ollama and ensure 'ollama' is on your PATH.")
+    return False
+
+
+def model_in_list(model: str) -> Optional[str]:
+    """Check `ollama list` for the model string. Return stdout if present, else None."""
+    rc, out, err = run_cmd(["ollama", "list"])  # list models
+    if rc != 0:
+        print("Could not run 'ollama list'. stderr:", err)
+        return None
+    if model in out:
+        return out
+    return None
+
+
+def try_run_model(model: str, prompt: str) -> Tuple[bool, str]:
+    """Attempt to run the model with two common invocation styles and return (success, output).
+
+    Tries:
+      1) ollama run <model> "<prompt>"
+      2) ollama run <model> --prompt "<prompt>"
+    """
+    # style 1: positional prompt
+    cmd1 = ["ollama", "run", model, prompt]
+    rc1, out1, err1 = run_cmd(cmd1)
+    if rc1 == 0 and out1:
+        return True, out1
+
+    # style 2: explicit --prompt
+    cmd2 = ["ollama", "run", model, "--prompt", prompt]
+    rc2, out2, err2 = run_cmd(cmd2)
+    if rc2 == 0 and out2:
+        return True, out2
+
+    # if neither worked, return combined diagnostics
+    diag = "--- Attempt 1 ---\n"
+    diag += f"cmd: {' '.join(cmd1)}\nexit: {rc1}\nstdout:\n{out1}\nstderr:\n{err1}\n"
+    diag += "\n--- Attempt 2 ---\n"
+    diag += f"cmd: {' '.join(cmd2)}\nexit: {rc2}\nstdout:\n{out2}\nstderr:\n{err2}\n"
+    return False, diag
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Quick test for Ollama model via `ollama` CLI")
+    parser.add_argument("--model", default="llama3.2:1b", help="Model identifier to test (default: llama3.2:1b)")
+    parser.add_argument("--prompt", default="Hello from test script! Please respond concisely.", help="Prompt to send to the model")
+    parser.add_argument("--skip-list-check", action="store_true", help="Skip running `ollama list` to check model availability")
+    args = parser.parse_args()
+
+    if not check_ollama_cli():
+        print("Install instructions: https://ollama.com (or use your platform's package manager).")
+        return 2
+
+    if not args.skip_list_check:
+        print("Checking installed/pulled models with 'ollama list'...")
+        out = model_in_list(args.model)
+        if not out:
+            print(f"Model '{args.model}' not found in 'ollama list' output. You can pull it with:\n  ollama pull {args.model}\nOr run the script anyway to allow ollama to auto-download if supported.")
+        else:
+            print(f"Model appears in list. (snippet)\n{out.splitlines()[:20]}")
+
+    print(f"Running model '{args.model}' with prompt: {args.prompt!r}")
+    ok, result = try_run_model(args.model, args.prompt)
+    if ok:
+        print("\n=== MODEL OUTPUT ===\n")
+        print(result)
+        return 0
+
+    print("\nModel run failed. Diagnostics below:\n")
+    print(result)
+    return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
