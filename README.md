@@ -1,63 +1,49 @@
-Run: uvicorn main:app --reload
-Then open http://127.0.0.1:8000/docs
 
-## Local Llama agent (offline diagnostics)
 
-`local_llama_agent.py` packages the Jetson-side responsibilities for the new
-hybrid setup.  It keeps everything offline by talking to Ollama's
-`llama3.2:1b` model that runs directly on the device.
+##Need to ADD Rag
 
-### Responsibilities covered locally
 
-* Check whether the requested Ollama model is already installed and provide a
-  helpful hint if it is missing.
-* Train (or load) a lightweight RandomForest classifier from `fault.csv`.
-* Fit a simple anomaly baseline from `normal.csv` and report outlier sensors.
-* Retrieve structured troubleshooting steps from `local_knowledge_base.json`.
-* Ask the local LLM to merge retrieval context with real-time sensor snapshots
-  to emit a step-by-step diagnostic plan.
+# Ollama local test script
 
-### Usage
+This repository includes `test.py`, a small script to locally test an Ollama model (default: `llama:3.21b`) using the `ollama` CLI.
+
+## Requirements
+
+- Ollama installed and `ollama` available on your PATH. See https://ollama.com for installation.
+- The model `llama:3.21b` pulled locally (optional) or available for automatic download by Ollama.
+
+## Usage
+
+Run the script from the project root:
 
 ```bash
-python local_llama_agent.py
+python test.py --model llama:3.21b --prompt "Hello from my test script"
 ```
 
-By default the script will:
+Flags:
+- `--model`: model identifier (default: `llama:3.21b`)
+- `--prompt`: the prompt to send to the model
+- `--skip-list-check`: skip running `ollama list` to check model availability
 
-1. Print the status of the `llama3.2:1b` model on Ollama.
-2. Train and persist the RandomForest classifier (artifacts stored under
-   `artifacts/`).
-3. Fit the anomaly detector and evaluate a demo sensor snapshot.
-4. Send the structured-diagnostics prompt to `http://127.0.0.1:11434`. Make
-   sure `ollama serve` is running before invoking the script.
+## Troubleshooting
 
-```mermaid
-flowchart TD
-    A["Power Electronics Circuit(Lab Setup)"] --> B["Data Acquisition & Labeling(Oscilloscope / DAQ / Lab)"]
-    B --> C["Jetson Nano + CUDA(Edge Compute Node)"]
+- If you see "'ollama' CLI not found in PATH", make sure Ollama is installed and the `ollama` binary is accessible from your shell.
+- If the model is not listed in `ollama list`, pull it manually:
 
-    %% Models branching from Jetson
-    C --> C1["Model 1:Fault Classifier (CNN)"]
-    C --> C2["Model 2:Diagnostic LLM (Meta-Llama 3.1 8B)"]
-    C --> C3["Model 3:Retrieval Agent (MiniLM / S-BERT)"]
-    C --> C4["Model 4:Planner LLM (Gemma 2 / Mistral 7B)"]
+```bash
+ollama pull llama:3.21b
+```
 
-    %% Merge models back to coordinator
-    C1 --> D["LangChain Coordinator Agent(routes queries & responses)"]
-    C2 --> D
-    C3 --> D
-    C4 --> D
+- If `ollama run` fails, the script prints diagnostics including stdout/stderr for two common invocation styles. Use that output to debug.
 
-    D --> E["User Interface / API Layer(Web / Terminal App)"]
+## Example
 
-    %% Styling
-    style A fill:#9be7a2,stroke:#2e7d32,stroke-width:2px,color:#000000
-    style B fill:#a5d6a7,stroke:#2e7d32,stroke-width:2px,color:#000000
-    style C fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000000
-    style C1 fill:#90caf9,stroke:#0d47a1,stroke-width:2px,color:#000000
-    style C2 fill:#ef9a9a,stroke:#b71c1c,stroke-width:2px,color:#000000
-    style C3 fill:#90caf9,stroke:#0d47a1,stroke-width:2px,color:#000000
-    style C4 fill:#ef9a9a,stroke:#b71c1c,stroke-width:2px,color:#000000
-    style D fill:#ffcc80,stroke:#e65100,stroke-width:2px,color:#000000
-    style E fill:#e0e0e0,stroke:#424242,stroke-width:2px,color:#000000
+```bash
+python test.py --prompt "Write a 2-line haiku about autumn"
+```
+
+If you want, set up a small virtualenv and run `python -m venv .venv && . .venv/bin/activate` before running.
+
+---
+
+If you'd like, I can also add an automated test that runs a very short `ollama list` check (skips if `ollama` missing) or a CI job stub—tell me which option you prefer.

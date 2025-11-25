@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iDAQ User Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        #sensorChart { max-width: 600px; margin-bottom: 2rem; }
+        #chat { max-width: 600px; }
+        #messages { border: 1px solid #ccc; padding: 0.5rem; height: 200px; overflow-y: scroll; margin-bottom: 0.5rem; }
+        #userInput { width: 80%; padding: 0.5rem; }
+        #sendButton { padding: 0.5rem 1rem; }
+    </style>
+</head>
+<body>
+    <!-- Navigation bar for transitions between pages -->
+    <nav style="margin-bottom: 1rem;">
+        <a href="/admin" style="background-color:#4CAF50;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">Admin Dashboard</a>
+        <a href="/logout" style="background-color:#f44336;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">Logout</a>
+    </nav>
+
+    <h1>User Dashboard</h1>
+    <p>This page displays live sensor readings and provides a diagnostic chatbot powered by the local LLM.</p>
+
+    <canvas id="sensorChart"></canvas>
+
+    <div id="chat">
+        <h2>Diagnostic Chat</h2>
+        <div id="messages"></div>
+        <input type="text" id="userInput" placeholder="Ask a question...">
+        <button id="sendButton">Send</button>
+    </div>
+
+    <div id="rag-chat" style="margin-top:2rem; max-width:600px;">
+        <h2>Datasheet Q&A</h2>
+        <div id="ragMessages" style="border:1px solid #ccc; padding:0.5rem; height:200px; overflow-y:scroll; margin-bottom:0.5rem;"></div>
+        <input type="text" id="ragInput" placeholder="Ask using datasheet..." style="width:80%; padding:0.5rem;">
+        <button id="ragButton" style="padding:0.5rem 1rem;">Ask</button>
+    </div>
+
+    <p><a href="/logout">Logout</a></p>
+
+    <script>
+    // JavaScript for updating sensor chart and chat functions...
+    </script>
+</body>
+</html>
