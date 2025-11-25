@@ -38,6 +38,7 @@ import pandas as pd
 from fastapi import Depends, FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from local_llama_agent import (
     LocalDiagnosticsAgent,
@@ -53,6 +54,15 @@ agent = LocalDiagnosticsAgent()
 
 # Create the FastAPI app
 app = FastAPI(title="iDAQ Diagnostics Server")
+
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Ensure templates directory exists
 if not TEMPLATES_DIR.exists():
@@ -76,6 +86,28 @@ def is_admin(request: Request) -> bool:
 
 def redirect_to_login() -> RedirectResponse:
     return RedirectResponse(url="/login", status_code=303)
+
+
+# ---------------------------------------------------------------------
+# Startup event to check Ollama status
+# ---------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup_event():
+    """Check if Ollama is running and model is available on startup."""
+    print("=" * 60)
+    print("iDAQ Diagnostics Server Starting Up")
+    print("=" * 60)
+    try:
+        status = agent.ollama.ensure_model_available()
+        print(status)
+    except Exception as e:
+        print(f"⚠️ WARNING: {e}")
+        print("Make sure to:")
+        print("  1. Install Ollama: https://ollama.com")
+        print("  2. Start Ollama service: 'ollama serve'")
+        print("  3. Pull the model: 'ollama pull llama3.2:1b'")
+    print("=" * 60)
 
 
 # ---------------------------------------------------------------------
@@ -250,15 +282,24 @@ async def chat_endpoint(request: Request):
     Accept a user message and return a response from the local LLM.  If
     the Ollama server is unreachable, returns an error message.
     """
-    data = await request.json()
-    message: Optional[str] = data.get("message")
-    if not message:
-        return JSONResponse({"response": "Please provide a message."}, status_code=400)
     try:
+        data = await request.json()
+        message: Optional[str] = data.get("message")
+        if not message:
+            return JSONResponse({"response": "Please provide a message."}, status_code=400)
+        
+        print(f"Received chat message: {message}")
         response_text = agent.ollama.generate(message)
+        print(f"LLM response: {response_text[:100]}...")
         return {"response": response_text}
     except OllamaNotRunningError as exc:
-        return JSONResponse({"response": str(exc)}, status_code=503)
+        error_msg = f"Ollama server is not running. Please start it with 'ollama serve'. Error: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=503)
+    except Exception as exc:
+        error_msg = f"Unexpected error in chat: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=500)
 
 
 @app.post("/ask-rag")
@@ -268,15 +309,20 @@ async def ask_rag(request: Request):
     agent will retrieve relevant context from ingested datasheets and
     then query the local LLM to generate a grounded answer.
     """
-    data = await request.json()
-    question: Optional[str] = data.get("question") or data.get("message")
-    if not question:
-        return JSONResponse({"response": "Please provide a question."}, status_code=400)
     try:
+        data = await request.json()
+        question: Optional[str] = data.get("question") or data.get("message")
+        if not question:
+            return JSONResponse({"response": "Please provide a question."}, status_code=400)
+        
+        print(f"Received RAG question: {question}")
         answer = agent.query_rag(question)
+        print(f"RAG response: {answer[:100]}...")
         return {"response": answer}
     except Exception as exc:
-        return JSONResponse({"response": f"Error: {exc}"}, status_code=500)
+        error_msg = f"Error in RAG query: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=500)
 
 
 @app.exception_handler(404)
