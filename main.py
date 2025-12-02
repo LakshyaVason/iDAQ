@@ -1,154 +1,331 @@
 """
-LangChain + LangServe application for Power Electronics Fault Detection and LLM interaction.
+Main FastAPI server for iDAQ local diagnostics and training.
 
-Features
---------
-1. Train a RandomForestClassifier on uploaded CSV data (fault detection model)
-2. Query an LLM (Meta-Llama 3.1 8B) for explanations or diagnostic reasoning
-3. Expose REST API endpoints for chat and ML training/evaluation
-4. Runs on Jetson Nano (CUDA or CPU)
+This server exposes a simple web interface for both administrators and
+end users. Administrators (authenticated via static credentials) can
+upload normal and fault datasets, trigger training of the fault
+classifier and anomaly baseline, and view their status.  End users can
+view live sensor readings plotted on a chart and interact with a
+diagnostic chatbot powered by a locally running Ollama language model.
+
+Endpoints:
+
+* ``GET /`` – Redirects to login or appropriate dashboard based on cookie.
+* ``GET /login`` – Render the login form.
+* ``POST /login`` – Authenticate and set an admin cookie.
+* ``GET /logout`` – Clear admin cookie and redirect to login.
+* ``GET /admin`` – Upload and training interface for admins.
+* ``POST /upload-normal`` – Upload a CSV of normal operation data.
+* ``POST /upload-fault`` – Upload a CSV of fault data.
+* ``POST /upload-pdf`` – Upload a datasheet PDF and ingest it for RAG.
+* ``POST /train`` – Train the classifier and baseline using uploaded data.
+* ``GET /user`` – User dashboard with live graph and chat.
+* ``GET /sensor-data`` – Return current sensor values as JSON.
+* ``POST /chat`` – Send a message to the local LLM and return its response.
+* ``POST /ask-rag`` – Send a question through the RAG pipeline.
+
+Note that this example uses a very simple cookie mechanism to manage
+admin sessions. In a production system you would use a more robust
+authentication framework.
 """
 
 import os
-import torch
+import random
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
-import numpy as np
-from fastapi import FastAPI, UploadFile, File
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
-from langserve import add_routes
-from langchain.llms import HuggingFacePipeline
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.tools import tool
-from transformers import pipeline
-from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
-# ────────────────────────────────────────────────────────────────
-# Load environment and model configuration
-# ────────────────────────────────────────────────────────────────
-load_dotenv()
-
-HF_TOKEN = os.getenv("HF_TOKEN")
-MODEL_ID = os.getenv("HF_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
-
-# ────────────────────────────────────────────────────────────────
-# Initialize the Hugging Face pipeline
-# ────────────────────────────────────────────────────────────────
-print(f"Loading model: {MODEL_ID}...")
-pipe = pipeline(
-    "text-generation",
-    model=MODEL_ID,
-    token=HF_TOKEN,
-    device=0 if torch.cuda.is_available() else -1,
-    dtype=torch.bfloat16 if torch.cuda.is_available() else None,
+from local_llama_agent import (
+    LocalDiagnosticsAgent,
+    OllamaNotRunningError,
 )
-llm = HuggingFacePipeline(pipeline=pipe)
 
-# LangChain memory + conversation chain
-memory = ConversationBufferMemory()
-chat_chain = ConversationChain(llm=llm, memory=memory)
+# Base directory for data and templates
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / "templates"
 
-# ────────────────────────────────────────────────────────────────
-# Fault Detection Tool (Train / Evaluate)
-# ────────────────────────────────────────────────────────────────
-MODEL_PATH = "trained_fault_model.pkl"
+# Instantiate the diagnostics agent (lazy loads knowledge base and LLM)
+agent = LocalDiagnosticsAgent()
 
+# Create the FastAPI app
+app = FastAPI(title="iDAQ Diagnostics Server")
 
-@tool
-def train_fault_classifier(file_path: str) -> str:
-    """Train a RandomForest classifier on fault detection dataset."""
-    print(f"Training on: {file_path}")
-    df = pd.read_csv(file_path)
+# Add CORS middleware to allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    if "fault_type" not in df.columns:
-        return "Dataset must include a 'fault_type' column."
-
-    X = df.drop(columns=["fault_type"], errors="ignore")
-    if "Time" in X.columns:
-        X = X.drop(columns=["Time"])
-    y = df["fault_type"].astype(int)
-    numeric_cols = X.select_dtypes(include=[np.number]).columns
-    X = X[numeric_cols].fillna(X.mean())
-
-    clf = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
-    clf.fit(X, y)
-
-    # Save trained model
-    import joblib
-    joblib.dump(clf, MODEL_PATH)
-
-    return f"✅ Trained RandomForest model with {len(df)} samples."
+# Ensure templates directory exists
+if not TEMPLATES_DIR.exists():
+    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@tool
-def evaluate_fault_classifier(file_path: str) -> str:
-    """Evaluate trained RandomForest classifier on test dataset."""
-    import joblib
-    if not os.path.exists(MODEL_PATH):
-        return "No trained model found. Please train the model first."
+# ---------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------
 
-    df = pd.read_csv(file_path)
-    clf = joblib.load(MODEL_PATH)
-
-    X_test = df.drop(columns=["fault_type"], errors="ignore")
-    if "Time" in X_test.columns:
-        X_test = X_test.drop(columns=["Time"])
-    numeric_cols = X_test.select_dtypes(include=[np.number]).columns
-    X_test = X_test[numeric_cols].fillna(X_test.mean())
-
-    y_test = df["fault_type"].astype(int)
-    y_pred = clf.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred)
-
-    return f"✅ Evaluation complete.\nAccuracy: {acc:.3f}\n\n{report}"
+def read_template(name: str) -> str:
+    """Read an HTML template from the templates directory."""
+    path = TEMPLATES_DIR / name
+    return path.read_text(encoding="utf-8")
 
 
-# ────────────────────────────────────────────────────────────────
-# FastAPI + LangServe Integration
-# ────────────────────────────────────────────────────────────────
-app = FastAPI(title="LLM-Powered Power Electronics Fault Detection API")
-
-# Add LangChain chat route
-add_routes(app, chat_chain, path="/chat")
-
-# Add ML endpoints (manual file upload routes)
-@app.post("/train")
-async def train_file(file: UploadFile = File(...)):
-    file_path = f"./uploads/{file.filename}"
-    os.makedirs("uploads", exist_ok=True)
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
-    result = train_fault_classifier.run(file_path)
-    return {"message": result}
+def is_admin(request: Request) -> bool:
+    """Check whether the incoming request has an admin cookie set."""
+    return request.cookies.get("admin") == "1"
 
 
-@app.post("/evaluate")
-async def evaluate_file(file: UploadFile = File(...)):
-    file_path = f"./uploads/{file.filename}"
-    os.makedirs("uploads", exist_ok=True)
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
-    result = evaluate_fault_classifier.run(file_path)
-    return {"message": result}
+def redirect_to_login() -> RedirectResponse:
+    return RedirectResponse(url="/login", status_code=303)
 
+
+# ---------------------------------------------------------------------
+# Startup event to check Ollama status
+# ---------------------------------------------------------------------
+
+@app.on_event("startup")
+async def startup_event():
+    """Check if Ollama is running and model is available on startup."""
+    print("=" * 60)
+    print("iDAQ Diagnostics Server Starting Up")
+    print("=" * 60)
+    try:
+        status = agent.ollama.ensure_model_available()
+        print(status)
+    except Exception as e:
+        print(f"⚠️ WARNING: {e}")
+        print("Make sure to:")
+        print("  1. Install Ollama: https://ollama.com")
+        print("  2. Start Ollama service: 'ollama serve'")
+        print("  3. Pull the model: 'ollama pull llama3.2:1b'")
+    print("=" * 60)
+
+
+# ---------------------------------------------------------------------
+# Authentication endpoints
+# ---------------------------------------------------------------------
 
 @app.get("/")
-async def root():
+async def index(request: Request):
+    """Root path; redirect users to appropriate dashboard."""
+    if is_admin(request):
+        return RedirectResponse(url="/admin", status_code=303)
+    # If not admin and not authenticated, show user dashboard
+    return RedirectResponse(url="/user", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form():
+    """Render the login form."""
+    return HTMLResponse(read_template("login.html"))
+
+
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Authenticate user and set an admin cookie if credentials match."""
+    # Replace these with secure credential storage in real usage
+    if username == "pqlab" and password == "PQ2025!":
+        response = RedirectResponse(url="/admin", status_code=303)
+        # Set admin cookie; expires when browser session ends
+        response.set_cookie(key="admin", value="1", httponly=True)
+        return response
+    else:
+        # If authentication fails, redirect to user dashboard (no admin)
+        return RedirectResponse(url="/user", status_code=303)
+
+
+@app.get("/logout")
+async def logout():
+    """Clear the admin cookie and redirect to login page."""
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(key="admin")
+    return response
+
+
+# ---------------------------------------------------------------------
+# Admin endpoints
+# ---------------------------------------------------------------------
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    """Render the admin dashboard for uploading and training data."""
+    if not is_admin(request):
+        return redirect_to_login()
+    return HTMLResponse(read_template("admin.html"))
+
+
+@app.post("/upload-normal")
+async def upload_normal(request: Request, file: UploadFile = File(...)):
+    """
+    Upload a CSV file containing normal operation data.  Saves the file
+    as ``normal.csv`` in the app directory so that it can be used for
+    anomaly baseline training.
+    """
+    if not is_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    contents = await file.read()
+    data_path = BASE_DIR / "normal.csv"
+    with open(data_path, "wb") as f:
+        f.write(contents)
+    return {"message": "Normal dataset uploaded."}
+
+
+@app.post("/upload-pdf")
+async def upload_pdf(request: Request, file: UploadFile = File(...)):
+    """
+    Upload a datasheet PDF for retrieval‑augmented generation.  The PDF
+    will be saved to a ``datasheets`` directory and ingested into the
+    vector store via the diagnostics agent.  Only admins can perform
+    this action.
+    """
+    if not is_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    contents = await file.read()
+    datasheets_dir = BASE_DIR / "datasheets"
+    datasheets_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = datasheets_dir / file.filename
+    with open(pdf_path, "wb") as f:
+        f.write(contents)
+    try:
+        msg = agent.ingest_pdf(pdf_path)
+        return {"message": msg}
+    except Exception as exc:
+        return JSONResponse({"error": f"Error ingesting PDF: {exc}"}, status_code=500)
+
+
+@app.post("/upload-fault")
+async def upload_fault(request: Request, file: UploadFile = File(...)):
+    """
+    Upload a CSV file containing fault data.  Saves the file as
+    ``fault.csv`` in the app directory so that it can be used for
+    classifier training.
+    """
+    if not is_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    contents = await file.read()
+    data_path = BASE_DIR / "fault.csv"
+    with open(data_path, "wb") as f:
+        f.write(contents)
+    return {"message": "Fault dataset uploaded."}
+
+
+@app.post("/train")
+async def train_models(request: Request):
+    """
+    Trigger training of the fault classifier and anomaly detection baseline.
+    Requires both ``fault.csv`` and ``normal.csv`` to exist.  Returns
+    status messages detailing what was trained successfully.
+    """
+    if not is_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    messages = []
+    fault_path = BASE_DIR / "fault.csv"
+    normal_path = BASE_DIR / "normal.csv"
+    if not fault_path.exists():
+        messages.append("⚠️ fault.csv not found. Upload a fault dataset first.")
+    else:
+        try:
+            msg = agent.train_fault_classifier(fault_path)
+            messages.append(msg)
+        except Exception as exc:
+            messages.append(f"⚠️ Error training classifier: {exc}")
+    if not normal_path.exists():
+        messages.append("⚠️ normal.csv not found. Upload a normal dataset first.")
+    else:
+        try:
+            stats = agent.fit_anomaly_baseline(normal_path)
+            messages.append(
+                f"✅ Fitted anomaly baseline on {normal_path.name} with {len(stats)} features."
+            )
+        except Exception as exc:
+            messages.append(f"⚠️ Error fitting anomaly baseline: {exc}")
+    return {"messages": messages}
+
+
+# ---------------------------------------------------------------------
+# User endpoints
+# ---------------------------------------------------------------------
+
+@app.get("/user", response_class=HTMLResponse)
+async def user_page():
+    """Render the user dashboard with live graph and chat interface."""
+    return HTMLResponse(read_template("user.html"))
+
+
+@app.get("/sensor-data")
+async def sensor_data() -> dict:
+    """
+    Return simulated sensor data.  In a real deployment this function
+    would interface with the Jetson GPIO or ADC hardware to read
+    voltage, current, temperature and vibration signals.
+    """
     return {
-        "status": "running",
-        "description": "LangServe-based LLM + Fault Detection API",
-        "model": MODEL_ID,
-        "gpu_enabled": torch.cuda.is_available(),
+        "voltage": round(random.uniform(280.0, 320.0), 2),
+        "current": round(random.uniform(10.0, 20.0), 2),
+        "temperature": round(random.uniform(25.0, 80.0), 2),
+        "vibration": round(random.uniform(0.0, 1.0), 2),
     }
 
 
-# ────────────────────────────────────────────────────────────────
-# Run: uvicorn main:app --reload
-# Then open http://127.0.0.1:8000/docs
-# ────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    import uvicorn
+@app.post("/chat")
+async def chat_endpoint(request: Request):
+    """
+    Accept a user message and return a response from the local LLM.  If
+    the Ollama server is unreachable, returns an error message.
+    """
+    try:
+        data = await request.json()
+        message: Optional[str] = data.get("message")
+        if not message:
+            return JSONResponse({"response": "Please provide a message."}, status_code=400)
+        
+        print(f"Received chat message: {message}")
+        response_text = agent.ollama.generate(message)
+        print(f"LLM response: {response_text[:100]}...")
+        return {"response": response_text}
+    except OllamaNotRunningError as exc:
+        error_msg = f"Ollama server is not running. Please start it with 'ollama serve'. Error: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=503)
+    except Exception as exc:
+        error_msg = f"Unexpected error in chat: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=500)
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+@app.post("/ask-rag")
+async def ask_rag(request: Request):
+    """
+    Accept a question and return a response from the RAG pipeline.  The
+    agent will retrieve relevant context from ingested datasheets and
+    then query the local LLM to generate a grounded answer.
+    """
+    try:
+        data = await request.json()
+        question: Optional[str] = data.get("question") or data.get("message")
+        if not question:
+            return JSONResponse({"response": "Please provide a question."}, status_code=400)
+        
+        print(f"Received RAG question: {question}")
+        answer = agent.query_rag(question)
+        print(f"RAG response: {answer[:100]}...")
+        return {"response": answer}
+    except Exception as exc:
+        error_msg = f"Error in RAG query: {str(exc)}"
+        print(error_msg)
+        return JSONResponse({"response": error_msg}, status_code=500)
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc):
+    """Handle 404 errors with a simple message."""
+    return JSONResponse({"detail": "Not found"}, status_code=404)

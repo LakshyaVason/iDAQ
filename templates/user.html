@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iDAQ User Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        nav {
+            padding: 1rem 2rem;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        nav a {
+            margin-right: 0.5rem;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+        .main-container {
+            display: flex;
+            padding: 2rem;
+            gap: 2rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        .left-panel {
+            flex: 2;
+            min-width: 600px;
+        }
+        .right-panel {
+            flex: 1;
+            min-width: 400px;
+        }
+        .container {
+            background-color: #fff;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        #sensorChart { 
+            max-width: 100%; 
+            margin-bottom: 1rem; 
+        }
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .chat-header h2 {
+            margin: 0;
+        }
+        .mode-toggle {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #2196F3;
+            transition: .4s;
+            border-radius: 30px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #4CAF50;
+        }
+        input:checked + .slider:before {
+            transform: translateX(30px);
+        }
+        .mode-label {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        .mode-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        .mode-chat {
+            background-color: #e3f2fd;
+            color: #1976D2;
+        }
+        .mode-rag {
+            background-color: #e8f5e9;
+            color: #388E3C;
+        }
+        .upload-section {
+            background-color: #f0f8ff;
+            border: 2px dashed #2196F3;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            text-align: center;
+            display: none;
+        }
+        .upload-section.active {
+            display: block;
+        }
+        .upload-section input[type="file"] {
+            display: none;
+        }
+        .upload-label {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: #2196F3;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .upload-label:hover {
+            background-color: #1976D2;
+        }
+        .file-info {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        #messages { 
+            border: 1px solid #e0e0e0; 
+            padding: 1rem; 
+            height: 450px; 
+            overflow-y: auto; 
+            margin-bottom: 1rem;
+            background-color: #fafafa;
+            border-radius: 4px;
+            flex: 1;
+        }
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-radius: 8px;
+            max-width: 85%;
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+            text-align: right;
+        }
+        .bot-message {
+            background-color: #f1f8e9;
+            margin-right: auto;
+        }
+        .bot-message.rag-mode {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+        .message-label {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+        .message-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            margin-left: 0.5rem;
+            background-color: #ff9800;
+            color: white;
+        }
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .input-group input { 
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+        .btn { 
+            padding: 0.75rem 1.5rem;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background-color: #2196F3;
+        }
+        .btn-primary:hover {
+            background-color: #1976D2;
+        }
+        .btn-success {
+            background-color: #4CAF50;
+        }
+        .btn-success:hover {
+            background-color: #388E3C;
+        }
+        .btn-danger {
+            background-color: #f44336;
+        }
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+        .btn-warning {
+            background-color: #ff9800;
+        }
+        .btn-warning:hover {
+            background-color: #f57c00;
+        }
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            font-size: 0.85rem;
+            color: #666;
+            padding: 0.5rem;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .export-section {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e0e0e0;
+            flex-wrap: wrap;
+        }
+        .session-info {
+            background-color: #e8f5e9;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        @media (max-width: 1200px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .left-panel, .right-panel {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/admin" style="background-color:#4CAF50;color:#fff;">Admin Dashboard</a>
+        <a href="/logout" style="background-color:#f44336;color:#fff;">Logout</a>
+    </nav>
+
+    <div class="main-container">
+        <!-- Left Panel: Sensor Graph -->
+        <div class="left-panel">
+            <div class="container">
+                <h1 style="margin-top: 0;">Sensor Monitoring</h1>
+                
+                <div class="session-info" id="sessionInfo">
+                    <strong>📊 Current Session:</strong> Not started | <strong>Data Points:</strong> 0
+                </div>
+                
+                <div class="warning-box" id="gpioWarning">
+                    <strong>⚠️ GPIO Not Connected</strong><br>
+                    Sensor graph is currently disabled. Connect your GPIO sensors and click "Start Monitoring" to begin data collection.
+                </div>
+
+                <div class="controls">
+                    <button id="startMonitoringButton" class="btn btn-success" onclick="startMonitoring()">▶ Start Monitoring</button>
+                    <button id="stopMonitoringButton" class="btn btn-danger" onclick="stopMonitoring()" style="display:none;">⏸ Stop Monitoring</button>
+                    <button id="simulateModeButton" class="btn btn-warning" onclick="toggleSimulateMode()">🔄 Enable Simulation</button>
+                    <button class="btn btn-primary" onclick="clearGraph()">🗑️ Clear Graph</button>
+                </div>
+
+                <canvas id="sensorChart"></canvas>
+                
+                <div class="export-section">
+                    <strong>Export Session Data:</strong>
+                    <button class="btn btn-primary" onclick="exportToCSV()">📥 CSV</button>
+                    <button class="btn btn-primary" onclick="exportToJSON()">📥 JSON</button>
+                    <button class="btn btn-primary" onclick="exportChatHistory()">💬 Chat</button>
+                </div>
+                
+                <div class="status" id="chartStatus">Monitoring not started. Click "Start Monitoring" when GPIO is ready.</div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Unified Chat -->
+        <div class="right-panel">
+            <div class="container">
+                <div class="chat-header">
+                    <h2>💬 Diagnostic Assistant</h2>
+                    <div class="mode-toggle">
+                        <span class="mode-label">Chat</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="ragToggle" onchange="toggleRagMode()">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="mode-label">RAG</span>
+                        <span class="mode-badge mode-chat" id="modeBadge">💬 Chat Mode</span>
+                    </div>
+                </div>
+
+                <!-- Upload Section (shown only in RAG mode) -->
+                <div class="upload-section" id="uploadSection">
+                    <h3 style="margin-top: 0;">📄 Upload Device Datasheet</h3>
+                    <p style="margin: 0.5rem 0; font-size: 0.9rem;">Upload PDF datasheets to enable RAG-powered answers</p>
+                    <input type="file" id="pdfUpload" accept=".pdf" onchange="handlePdfUpload(event)">
+                    <label for="pdfUpload" class="upload-label">
+                        📁 Choose PDF File
+                    </label>
+                    <div class="file-info" id="fileInfo">No file selected</div>
+                    <div class="status" id="uploadStatus" style="margin-top: 0.5rem;"></div>
+                </div>
+
+                <!-- Unified Chat Messages -->
+                <div id="messages"></div>
+                
+                <!-- Input Section -->
+                <div class="input-group">
+                    <input type="text" id="userInput" placeholder="Ask a question..." onkeypress="handleKeyPress(event)">
+                    <button class="btn btn-primary" id="sendButton" onclick="sendMessage()">Send</button>
+                </div>
+                <div class="status" id="chatStatus"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart.js setup
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        const sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Voltage (V)',
+                        data: [],
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Current (A)',
+                        data: [],
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: 'rgb(255, 205, 86)',
+                        backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Vibration',
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Real-time Sensor Data',
+                        font: { size: 16 }
+                    }
+                }
+            }
+        });
+
+        // State management
+        let isMonitoring = false;
+        let simulateMode = false;
+        let monitoringInterval = null;
+        let sessionStartTime = null;
+        const maxDataPoints = 100;
+        let sessionData = [];
+        let chatHistory = [];
+        let isRagMode = false;
+
+        // RAG Mode Toggle
+        function toggleRagMode() {
+            isRagMode = document.getElementById('ragToggle').checked;
+            const badge = document.getElementById('modeBadge');
+            const uploadSection = document.getElementById('uploadSection');
+            const input = document.getElementById('userInput');
+            
+            if (isRagMode) {
+                badge.textContent = '📚 RAG Mode';
+                badge.classList.remove('mode-chat');
+                badge.classList.add('mode-rag');
+                uploadSection.classList.add('active');
+                input.placeholder = 'Ask about datasheets...';
+                addMessage('RAG mode enabled. I can now answer questions using uploaded datasheets!', false, true);
+            } else {
+                badge.textContent = '💬 Chat Mode';
+                badge.classList.remove('mode-rag');
+                badge.classList.add('mode-chat');
+                uploadSection.classList.remove('active');
+                input.placeholder = 'Ask a question...';
+                addMessage('Chat mode enabled. Ask me anything about diagnostics!', false, false);
+            }
+        }
+
+        // PDF Upload Handler
+        async function handlePdfUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
+            document.getElementById('uploadStatus').textContent = 'Uploading and processing...';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/upload-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('uploadStatus').textContent = `✅ ${data.message}`;
+                    document.getElementById('uploadStatus').style.backgroundColor = '#d4edda';
+                    addMessage(`📄 Datasheet "${file.name}" has been uploaded and indexed successfully! You can now ask questions about it.`, false, true);
+                } else {
+                    document.getElementById('uploadStatus').textContent = `❌ Error: ${data.error}`;
+                    document.getElementById('uploadStatus').style.backgroundColor = '#f8d7da';
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                document.getElementById('uploadStatus').textContent = '❌ Upload failed. Check connection.';
+                document.getElementById('uploadStatus').style.backgroundColor = '#f8d7da';
+            }
+        }
+
+        function updateSessionInfo() {
+            const duration = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0;
+            const minutes = Math.floor(duration / 60);
+            const seconds = duration % 60;
+            const timeStr = `${minutes}m ${seconds}s`;
+            
+            document.getElementById('sessionInfo').innerHTML = 
+                `<strong>📊 Current Session:</strong> ${isMonitoring ? 'Active (' + timeStr + ')' : 'Stopped'} | ` +
+                `<strong>Data Points:</strong> ${sessionData.length} | ` +
+                `<strong>Mode:</strong> ${simulateMode ? 'SIMULATION' : 'LIVE GPIO'}`;
+        }
+
+        function startMonitoring() {
+            if (isMonitoring) return;
+            
+            isMonitoring = true;
+            sessionStartTime = Date.now();
+            sessionData = [];
+            
+            document.getElementById('startMonitoringButton').style.display = 'none';
+            document.getElementById('stopMonitoringButton').style.display = 'inline-block';
+            document.getElementById('gpioWarning').style.display = 'none';
+            document.getElementById('simulateModeButton').disabled = true;
+            
+            updateSessionInfo();
+            updateSensorData();
+            monitoringInterval = setInterval(updateSensorData, 2000);
+            setInterval(updateSessionInfo, 1000);
+        }
+
+        function stopMonitoring() {
+            if (!isMonitoring) return;
+            
+            isMonitoring = false;
+            clearInterval(monitoringInterval);
+            
+            document.getElementById('startMonitoringButton').style.display = 'inline-block';
+            document.getElementById('stopMonitoringButton').style.display = 'none';
+            document.getElementById('simulateModeButton').disabled = false;
+            document.getElementById('chartStatus').textContent = 'Monitoring stopped. Session data preserved for export.';
+            
+            updateSessionInfo();
+        }
+
+        function toggleSimulateMode() {
+            simulateMode = !simulateMode;
+            const button = document.getElementById('simulateModeButton');
+            
+            if (simulateMode) {
+                button.textContent = '✓ Simulation Enabled';
+                button.classList.remove('btn-warning');
+                button.classList.add('btn-success');
+                document.getElementById('gpioWarning').innerHTML = 
+                    '<strong>ℹ️ Simulation Mode Enabled</strong><br>' +
+                    'The system will generate simulated sensor data for testing. Click "Start Monitoring" to begin.';
+                document.getElementById('gpioWarning').style.backgroundColor = '#d1ecf1';
+                document.getElementById('gpioWarning').style.borderColor = '#17a2b8';
+            } else {
+                button.textContent = '🔄 Enable Simulation';
+                button.classList.remove('btn-success');
+                button.classList.add('btn-warning');
+                document.getElementById('gpioWarning').innerHTML = 
+                    '<strong>⚠️ GPIO Not Connected</strong><br>' +
+                    'Sensor graph is currently disabled. Connect your GPIO sensors and click "Start Monitoring" to begin data collection.';
+                document.getElementById('gpioWarning').style.backgroundColor = '#fff3cd';
+                document.getElementById('gpioWarning').style.borderColor = '#ffc107';
+            }
+            updateSessionInfo();
+        }
+
+        function clearGraph() {
+            if (confirm('Clear all graph data? Session data will still be available for export.')) {
+                sensorChart.data.labels = [];
+                sensorChart.data.datasets.forEach(dataset => dataset.data = []);
+                sensorChart.update();
+            }
+        }
+
+        async function updateSensorData() {
+            if (!isMonitoring) return;
+            
+            try {
+                const response = await fetch('/sensor-data');
+                const data = await response.json();
+                
+                const timestamp = new Date();
+                const timeStr = timestamp.toLocaleTimeString();
+                
+                const dataPoint = {
+                    timestamp: timestamp.toISOString(),
+                    time: timeStr,
+                    voltage: data.voltage,
+                    current: data.current,
+                    temperature: data.temperature,
+                    vibration: data.vibration
+                };
+                sessionData.push(dataPoint);
+                
+                sensorChart.data.labels.push(timeStr);
+                sensorChart.data.datasets[0].data.push(data.voltage);
+                sensorChart.data.datasets[1].data.push(data.current);
+                sensorChart.data.datasets[2].data.push(data.temperature);
+                sensorChart.data.datasets[3].data.push(data.vibration);
+
+                if (sensorChart.data.labels.length > maxDataPoints) {
+                    sensorChart.data.labels.shift();
+                    sensorChart.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+
+                sensorChart.update();
+                
+                const mode = simulateMode ? 'SIMULATED' : 'LIVE';
+                document.getElementById('chartStatus').textContent = 
+                    `${mode} | Last: ${timeStr} | V: ${data.voltage}V, I: ${data.current}A, T: ${data.temperature}°C, Vib: ${data.vibration}`;
+                
+                updateSessionInfo();
+            } catch (error) {
+                console.error('Error fetching sensor data:', error);
+                document.getElementById('chartStatus').textContent = 'Error fetching sensor data. Check GPIO connection.';
+                stopMonitoring();
+            }
+        }
+
+        // Export functions
+        function exportToCSV() {
+            if (sessionData.length === 0) {
+                alert('No data to export. Start monitoring first.');
+                return;
+            }
+            
+            const headers = ['Timestamp', 'Time', 'Voltage (V)', 'Current (A)', 'Temperature (°C)', 'Vibration'];
+            const rows = sessionData.map(d => [
+                d.timestamp,
+                d.time,
+                d.voltage,
+                d.current,
+                d.temperature,
+                d.vibration
+            ]);
+            
+            let csv = headers.join(',') + '\n';
+            csv += rows.map(row => row.join(',')).join('\n');
+            
+            downloadFile(csv, `idaq_session_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`, 'text/csv');
+        }
+
+        function exportToJSON() {
+            if (sessionData.length === 0) {
+                alert('No data to export. Start monitoring first.');
+                return;
+            }
+            
+            const exportData = {
+                session: {
+                    startTime: sessionStartTime ? new Date(sessionStartTime).toISOString() : null,
+                    endTime: new Date().toISOString(),
+                    mode: simulateMode ? 'simulation' : 'live',
+                    dataPoints: sessionData.length
+                },
+                data: sessionData
+            };
+            
+            const json = JSON.stringify(exportData, null, 2);
+            downloadFile(json, `idaq_session_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`, 'application/json');
+        }
+
+        function exportChatHistory() {
+            if (chatHistory.length === 0) {
+                alert('No chat history to export.');
+                return;
+            }
+            
+            const exportData = {
+                exportTime: new Date().toISOString(),
+                messages: chatHistory
+            };
+            
+            const json = JSON.stringify(exportData, null, 2);
+            downloadFile(json, `idaq_chat_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`, 'application/json');
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Unified Chat functionality
+        function addMessage(text, isUser, useRag = false) {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
+            
+            if (!isUser && useRag) {
+                messageDiv.classList.add('rag-mode');
+            }
+            
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.innerHTML = isUser ? 'You' : 'AI Assistant' + (useRag && !isUser ? '<span class="message-badge">RAG</span>' : '');
+            
+            const content = document.createElement('div');
+            content.textContent = text;
+            
+            messageDiv.appendChild(label);
+            messageDiv.appendChild(content);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            chatHistory.push({
+                timestamp: new Date().toISOString(),
+                sender: isUser ? 'user' : 'assistant',
+                mode: useRag ? 'rag' : 'chat',
+                message: text
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const sendButton = document.getElementById('sendButton');
+            const statusDiv = document.getElementById('chatStatus');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage(message, true);
+            input.value = '';
+            
+            sendButton.disabled = true;
+            statusDiv.textContent = isRagMode ? 'Searching datasheets...' : 'Waiting for response...';
+            
+            try {
+                const endpoint = isRagMode ? '/ask-rag' : '/chat';
+                const bodyKey = isRagMode ? 'question' : 'message';
+                
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [bodyKey]: message })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addMessage(data.response, false, isRagMode);
+                    statusDiv.textContent = 'Response received';
+                } else {
+                    addMessage(`Error: ${data.response || 'Unknown error'}`, false, isRagMode);
+                    statusDiv.textContent = 'Error occurred';
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addMessage('Error: Could not connect to the server. Make sure Ollama is running.', false, isRagMode);
+                statusDiv.textContent = 'Connection error';
+            } finally {
+                sendButton.disabled = false;
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') sendMessage();
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            addMessage('Hello! I\'m your diagnostic assistant. Ask me about sensor readings, fault diagnosis, or system status. Toggle RAG mode to query uploaded datasheets!', false, false);
+            updateSessionInfo();
+        });
+    </script>
+</body>
+</html>
