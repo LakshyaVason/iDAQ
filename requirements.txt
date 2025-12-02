@@ -10,7 +10,7 @@ safetensors
 pandas
 scikit-learn
 joblib
-numpy
+numpy<2
 
 # HTTP and templating utilities
 requests
