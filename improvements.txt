@@ -1,0 +1,23 @@
+4 Channels of Voltage (Selectable)
+4 Channels of Current (Selectable)
+4 Channels of Temperature (Selectable)
+
+Names on Graphs to be Editable
+
+Graph to LLM connection. 
+
+Test RAG // to be incl
+Screenshots of PE Prompts + UI //to be incl
+Prompts with Graph Questions //to be incl
+
+Scrollable Chatbox
+
+Remove Vibration
+
+Train datasets with API Key
+
+Center the Login
+
+Save session as run history for that individual account 
+
+Sign up as a user (firebase)
