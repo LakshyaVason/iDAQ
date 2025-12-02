@@ -1,6 +1,10 @@
 # iDAQ Diagnostics - Setup & Troubleshooting Guide
 ## Complete Setup Instructions
 
+### Zero-touch startup script
+
+Run `./setup.sh` from the repository root to create a virtual environment, install dependencies, verify the Ollama service, pull the configured model, and launch the FastAPI app with uvicorn (defaults to port 8000). The script mirrors the steps below and exits early with helpful guidance if a prerequisite is missing.
+
 ### Step 1: Install Ollama
 
 **For Windows:**
