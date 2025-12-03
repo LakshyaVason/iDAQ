@@ -1,6 +1,14 @@
 # iDAQ Diagnostics - Setup & Troubleshooting Guide
 ## Complete Setup Instructions
 
+### Zero-touch startup script
+
+$ # Make executable
+chmod +x setup.sh
+
+# Run it
+./setup.sh
+
 ### Step 1: Install Ollama
 
 **For Windows:**

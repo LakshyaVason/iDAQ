@@ -30,6 +30,7 @@ authentication framework.
 """
 
 import os
+import json
 import random
 from pathlib import Path
 from typing import Optional
@@ -261,18 +262,20 @@ async def user_page():
     return HTMLResponse(read_template("user.html"))
 
 
+def _generate_channels(base: float, spread: float, count: int = 4) -> list[float]:
+    return [round(random.uniform(base - spread, base + spread), 2) for _ in range(count)]
+
+
 @app.get("/sensor-data")
 async def sensor_data() -> dict:
     """
-    Return simulated sensor data.  In a real deployment this function
-    would interface with the Jetson GPIO or ADC hardware to read
-    voltage, current, temperature and vibration signals.
+    Return simulated sensor data across four voltage, current and temperature channels.
+    In a real deployment this would interface with the Jetson GPIO/ADC hardware.
     """
     return {
-        "voltage": round(random.uniform(280.0, 320.0), 2),
-        "current": round(random.uniform(10.0, 20.0), 2),
-        "temperature": round(random.uniform(25.0, 80.0), 2),
-        "vibration": round(random.uniform(0.0, 1.0), 2),
+        "voltage": _generate_channels(300.0, 15.0),
+        "current": _generate_channels(15.0, 4.0),
+        "temperature": _generate_channels(45.0, 20.0),
     }
 
 
@@ -285,10 +288,14 @@ async def chat_endpoint(request: Request):
     try:
         data = await request.json()
         message: Optional[str] = data.get("message")
+        sensor_context = data.get("context")
         if not message:
             return JSONResponse({"response": "Please provide a message."}, status_code=400)
-        
+
         print(f"Received chat message: {message}")
+        if sensor_context:
+            context_block = json.dumps(sensor_context, indent=2)
+            message = f"{message}\n\n[Latest simulated sensor context]\n{context_block}"
         response_text = agent.ollama.generate(message)
         print(f"LLM response: {response_text[:100]}...")
         return {"response": response_text}
