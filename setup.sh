@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 
-# Setup script for iDAQ Diagnostics
-#
-# This script mirrors the steps documented in README.md to prepare the
-# environment, verify prerequisites, pull the Ollama model, and launch the
-# FastAPI web application with uvicorn.
+# Minimal setup script for iDAQ Diagnostics (Git Bash on Windows)
+# No venv - just pull model and run
 
 set -euo pipefail
 
@@ -15,55 +12,41 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-echo "🔍 Checking prerequisites..."
+echo "Checking prerequisites..."
 
-if ! command_exists python3; then
-  echo "❌ Python 3 is required. Please install Python 3.10+ and re-run." >&2
-  exit 1
-fi
-
-if ! command_exists pip; then
-  echo "❌ pip is required. Please install pip (python3 -m ensurepip --upgrade)." >&2
+if ! command_exists python; then
+  echo "Python is required. Please install Python 3.10+"
   exit 1
 fi
 
 if ! command_exists ollama; then
-  cat <<'EOF'
-❌ Ollama CLI not found.
-Install Ollama from https://ollama.com (or the Jetson-specific build),
-then start the service in another terminal with:
-  ollama serve
-EOF
+  echo "Ollama CLI not found."
+  echo "Install Ollama from https://ollama.com"
   exit 1
 fi
 
-echo "✅ Python and pip detected"
+echo "Python and Ollama detected"
 
-echo "📦 Creating virtual environment (.venv) if missing..."
-python3 -m venv .venv
-source .venv/bin/activate
-
-echo "📚 Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-
-echo "🧠 Checking Ollama service and model (${MODEL_NAME})..."
+echo "Checking Ollama service..."
 if ! curl -sf http://127.0.0.1:11434/ >/dev/null 2>&1; then
-  cat <<'EOF'
-⚠️ Ollama does not appear to be running.
-Open a new terminal and start it with:
-  ollama serve
-Then re-run this script.
-EOF
+  echo "Ollama does not appear to be running."
+  echo "Open another terminal and run: ollama serve"
+  echo "Then re-run this script."
   exit 1
 fi
+
+echo "Ollama service is running"
 
 if ! ollama list | grep -q "${MODEL_NAME}"; then
-  echo "⬇️ Pulling model ${MODEL_NAME} (this may take a while)..."
+  echo "Pulling model ${MODEL_NAME} (this may take a while)..."
   ollama pull "${MODEL_NAME}"
 else
-  echo "✅ Model ${MODEL_NAME} already available"
+  echo "Model ${MODEL_NAME} already available"
 fi
 
-echo "🚀 Launching FastAPI with uvicorn on port ${APP_PORT}..."
-exec uvicorn main:app --reload --host 0.0.0.0 --port "${APP_PORT}"
+echo ""
+echo "Launching FastAPI on port ${APP_PORT}..."
+echo "Access at: http://localhost:${APP_PORT}"
+echo "Press Ctrl+C to stop"
+echo ""
+uvicorn main:app --reload --host 0.0.0.0 --port "${APP_PORT}"
