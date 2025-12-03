@@ -1,0 +1,406 @@
+
+
+## 🔌 Power Electronics Domain Knowledge Tests
+
+### Test 1: Basic PE Concepts
+**Prompt:**
+```
+What is shoot-through in a totem-pole PFC converter and why is it dangerous?
+```
+
+**Expected Response Quality:**
+- Should explain shoot-through occurs when both switches conduct simultaneously
+- Should mention DC bus short circuit risk
+- Should discuss dead-time implementation as mitigation
+
+---
+
+### Test 2: Component Understanding
+**Prompt:**
+```
+Why would you use an IGBT instead of a MOSFET in a high-power inverter application?
+```
+
+**Expected Response:**
+- IGBT advantages: lower conduction losses at high power
+- MOSFET advantages: faster switching, lower gate drive requirements
+- Trade-offs based on voltage/current ratings
+
+---
+
+### Test 3: Fault Mechanism
+**Prompt:**
+```
+If I'm seeing gradual voltage droop on the DC bus with rising MOSFET junction temperature, what components should I check first?
+```
+
+**Expected Response:**
+- DC link capacitor ESR degradation
+- Gate driver supply voltage
+- Thermal interface/cooling path
+- Should prioritize capacitors first
+
+---
+
+### Test 4: Protection Schemes
+**Prompt:**
+```
+What's the difference between cycle-by-cycle current limiting and overcurrent shutdown in a power converter?
+```
+
+**Expected Response:**
+- Cycle-by-cycle: limits each switching cycle, automatic recovery
+- Overcurrent shutdown: latched fault, requires reset
+- Use cases for each method
+
+---
+
+## 📊 Sensor Data Interpretation Tests
+
+### Test 5: Trend Analysis (with simulated data running)
+**Prompt:**
+```
+Looking at the current sensor data, what do you notice about the temperature trends over the last few readings?
+```
+
+**Expected Response:**
+- Should reference the context data provided
+- Should identify if temperature is rising, stable, or falling
+- Should give numerical values from context
+
+---
+
+### Test 6: Multi-Parameter Correlation
+**Prompt:**
+```
+I'm seeing voltage at 305V and temperature at 65°C. Is this normal operation or should I be concerned?
+```
+
+**Expected Response:**
+- Voltage is within normal range (280-320V simulation)
+- Temperature is elevated but not critical (<80°C limit)
+- Should ask about cooling conditions
+
+---
+
+### Test 7: Anomaly Detection Logic
+**Prompt:**
+```
+If voltage suddenly drops from 310V to 285V while current increases from 12A to 18A, what could be happening?
+```
+
+**Expected Response:**
+- Load increase causing voltage sag
+- Possible DC bus capacitor issues
+- Input power limitation
+- Should recommend checking input source
+
+---
+
+## 🔧 Fault Diagnosis Tests
+
+### Test 8: Systematic Troubleshooting
+**Prompt:**
+```
+Walk me through diagnosing an inverter that's tripping on overcurrent every 30 seconds
+```
+
+**Expected Response:**
+- Check load conditions first
+- Verify current sensor calibration
+- Inspect gate driver signals
+- Check for shoot-through
+- Review thermal management
+
+---
+
+### Test 9: Thermal Fault
+**Prompt:**
+```
+My IGBT is hitting thermal shutdown at 125°C under rated load. The heatsink is clean and fan is working. What else could cause this?
+```
+
+**Expected Response:**
+- Thermal interface material degradation
+- Incorrect mounting pressure
+- Gate driver voltage causing higher losses
+- Dead-time too short (more switching loss)
+- Check for high ambient temperature
+
+---
+
+### Test 10: Intermittent Fault
+**Prompt:**
+```
+I have a fault that only appears when ambient temperature exceeds 40°C. Where should I start investigating?
+```
+
+**Expected Response:**
+- Temperature-dependent component failures
+- Capacitor ESR increases with temp
+- Solder joint thermal expansion issues
+- Gate driver supply voltage drift
+- Should log data across temperature range
+
+---
+
+## 📄 RAG (Datasheet Query) Tests
+
+**Prerequisites:** Upload a power electronics datasheet PDF first (e.g., MOSFET, IGBT, gate driver)
+
+### Test 11: Absolute Maximum Ratings
+**Prompt (RAG Mode):**
+```
+What is the maximum drain-source voltage rating for this device?
+```
+
+**Expected Response:**
+- Should extract exact voltage from datasheet
+- Should cite the specific page/section
+- Should mention any conditions (e.g., at 25°C)
+
+---
+
+### Test 12: Electrical Characteristics
+**Prompt (RAG Mode):**
+```
+What is the typical on-resistance (RDS(on)) at 25°C and VGS = 10V?
+```
+
+**Expected Response:**
+- Specific RDS(on) value from datasheet
+- Conditions under which it's measured
+- Should mention it varies with temperature
+
+---
+
+### Test 13: Application Information
+**Prompt (RAG Mode):**
+```
+Does this datasheet provide a recommended gate drive circuit? If so, what components are suggested?
+```
+
+**Expected Response:**
+- Should reference application schematic if present
+- List recommended gate resistor values
+- Mention gate driver IC if specified
+
+---
+
+### Test 14: Thermal Data
+**Prompt (RAG Mode):**
+```
+What is the junction-to-case thermal resistance (RθJC) for this device?
+```
+
+**Expected Response:**
+- Specific RθJC value in °C/W
+- Should note package type
+- May mention different values for different packages
+
+---
+
+### Test 15: Cross-Reference Search
+**Prompt (RAG Mode):**
+```
+According to this datasheet, what other part numbers are pin-compatible or can be used as alternatives?
+```
+
+**Expected Response:**
+- List alternative part numbers if provided
+- Mention if no alternatives listed
+- Should note any differences in specifications
+
+---
+
+## 🧠 Context-Aware Response Tests
+
+### Test 16: Session Awareness (with monitoring active)
+**Prompt:**
+```
+Based on my current session data, am I running in simulation mode or live GPIO mode?
+```
+
+**Expected Response:**
+- Should correctly identify the mode
+- Should reference session metadata
+- Should mention data point count or duration
+
+---
+
+### Test 17: Historical Data Query
+**Prompt:**
+```
+What was the voltage reading 5 data points ago?
+```
+
+**Expected Response:**
+- Should reference the context provided
+- Give specific voltage value
+- Should note timestamp if available
+
+---
+
+### Test 18: Multi-Turn Conversation
+**Prompt 1:**
+```
+I'm testing a 3-phase inverter
+```
+**Prompt 2:**
+```
+What are common faults in these systems?
+```
+
+**Expected Response to Prompt 2:**
+- Should remember "3-phase inverter" context
+- Provide faults specific to 3-phase (not single-phase)
+- Phase imbalance, dead-time issues, EMI
+
+---
+
+## 🎯 Edge Case Tests
+
+### Test 19: Out-of-Domain Query
+**Prompt:**
+```
+What's the weather like today?
+```
+
+**Expected Response:**
+- Should politely decline or redirect
+- Should mention it's a power electronics diagnostic tool
+- Should offer to help with relevant queries
+
+---
+
+### Test 20: Ambiguous Query
+**Prompt:**
+```
+Why is it overheating?
+```
+
+**Expected Response:**
+- Should ask for clarification
+- "What component is overheating?"
+- Should list common causes while requesting more info
+
+---
+
+## 📝 Testing Procedure
+
+### For Each Test:
+1. **Start fresh session** (clear chat if needed)
+2. **Copy prompt exactly** as written
+3. **Record response** (screenshot or copy text)
+4. **Evaluate quality:**
+   - ✅ **Excellent:** Accurate, detailed, cites sources (RAG)
+   - ⚠️ **Good:** Mostly correct, some missing details
+   - ❌ **Poor:** Incorrect, irrelevant, or refuses to answer
+
+### Scoring Rubric:
+- **Domain Knowledge (Tests 1-4):** 4 tests × 25% = 100%
+- **Sensor Interpretation (Tests 5-7):** 3 tests × 33% = 100%
+- **Fault Diagnosis (Tests 8-10):** 3 tests × 33% = 100%
+- **RAG Accuracy (Tests 11-15):** 5 tests × 20% = 100%
+- **Context Awareness (Tests 16-18):** 3 tests × 33% = 100%
+
+**Overall Passing Grade:** 70% or higher in each category
+
+---
+
+## 🔍 RAG-Specific Validation
+
+### RAG Quality Checklist:
+- [ ] **Accuracy:** Info matches datasheet exactly
+- [ ] **Citation:** Mentions source/page when relevant
+- [ ] **Completeness:** Includes all requested data
+- [ ] **No Hallucination:** Doesn't invent specifications
+- [ ] **Refusal When Appropriate:** Says "not in datasheet" if true
+
+### Sample Datasheets to Test With:
+1. **MOSFET:** CSD19536KCS (TI), IRFB4115PBF (Infineon)
+2. **IGBT:** FGH60N60SMD (Fairchild), IKW40N120H3 (Infineon)
+3. **Gate Driver:** UCC27712 (TI), Si8271 (Silicon Labs)
+4. **Controller:** UCC28070 (PFC), TMS320F28379D (DSP)
+
+---
+
+## 📊 Results Template
+
+```markdown
+## Test Results - [Date]
+
+### Test #: [Test Name]
+**Prompt:** [Exact prompt used]
+**Response:** [LLM response]
+**Evaluation:** ✅ / ⚠️ / ❌
+**Notes:** [Any observations]
+**Score:** X/Y
+
+---
+
+### Summary Statistics
+- Tests Passed: X/20
+- Average Score: Y%
+- Category Breakdown:
+  - Domain Knowledge: X%
+  - Sensor Interpretation: X%
+  - Fault Diagnosis: X%
+  - RAG Accuracy: X%
+  - Context Awareness: X%
+```
+
+---
+
+## 🎓 Advanced Test Scenarios
+
+### Test 21: Chain-of-Thought Reasoning
+**Prompt:**
+```
+I have high vibration at 120Hz, DC bus ripple at 360Hz, and temperature rising linearly. Diagnose step-by-step.
+```
+
+**Expected Response:**
+- Should work through each symptom
+- 120Hz = 2× line frequency (60Hz) → mechanical issue
+- 360Hz = 6× line frequency → 3-phase rectifier ripple
+- Should connect symptoms logically
+
+---
+
+### Test 22: Safety Critical Query
+**Prompt:**
+```
+Can I bypass the gate resistor to get faster switching?
+```
+
+**Expected Response:**
+- Should warn about oscillations and shoot-through risk
+- Explain damping function of gate resistor
+- Recommend against it without proper analysis
+- Should prioritize safety
+
+---
+
+### Test 23: Multi-Datasheet Comparison (RAG)
+**Upload 2 similar datasheets, then prompt:**
+```
+Which MOSFET has lower gate charge: the first or second datasheet?
+```
+
+**Expected Response:**
+- Should compare Qg values from both datasheets
+- Should state which is lower with specific values
+- Should note any measurement condition differences
+
+---
+
+## 🚀 Pro Tips for Testing
+
+1. **Vary phrasing:** Ask same question different ways
+2. **Test follow-ups:** Multi-turn conversations reveal memory
+3. **Mix domains:** Power electronics + control theory
+4. **Challenge assumptions:** "Why not...?" questions
+5. **Test limits:** Very specific vs very vague prompts
+
+**Remember:** The goal is to find weaknesses so you can improve the system before your demo! 🎯
