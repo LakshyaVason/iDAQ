@@ -5,732 +5,918 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iDAQ User Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: Arial, sans-serif;
+        * { 
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
         }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            color: #2c3e50;
+        }
+        
+        /* Navigation */
         nav {
+            background-color: #2c3e50;
             padding: 1rem 2rem;
-            background-color: #fff;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        nav a {
-            margin-right: 0.5rem;
+        
+        nav .brand {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+        }
+        
+        nav .nav-links a {
+            color: white;
             text-decoration: none;
             padding: 0.5rem 1rem;
+            margin-left: 0.5rem;
             border-radius: 4px;
+            transition: background-color 0.2s;
         }
+        
+        nav .nav-links a:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+        
+        /* Main Layout */
         .main-container {
-            display: flex;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
             padding: 2rem;
-            gap: 2rem;
             max-width: 1800px;
             margin: 0 auto;
         }
-        .left-panel { flex: 2; min-width: 600px; }
-        .right-panel { flex: 1; min-width: 400px; }
-        .container {
-            background-color: #fff;
-            padding: 1.5rem;
+        
+        .panel {
+            background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            height: 100%;
-            display: flex;
-            flex-direction: column;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        #sensorChart { max-width: 100%; margin-bottom: 1rem; }
+        
+        /* Monitoring Panel */
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e1e8ed;
+        }
+        
+        .panel-header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .session-badge {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: #657786;
+        }
+        
+        .session-badge span {
+            padding: 0.25rem 0.75rem;
+            background-color: #f5f7fa;
+            border-radius: 4px;
+        }
+        
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background-color: #1da1f2;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background-color: #1a91da;
+        }
+        
+        .btn-success {
+            background-color: #17bf63;
+            color: white;
+        }
+        
+        .btn-success:hover:not(:disabled) {
+            background-color: #13a555;
+        }
+        
+        .btn-danger {
+            background-color: #e0245e;
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background-color: #c91d4f;
+        }
+        
+        .btn-secondary {
+            background-color: #657786;
+            color: white;
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #56646f;
+        }
+        
+        /* Channel Selector */
+        .channel-selector {
+            margin-bottom: 1.5rem;
+        }
+        
+        .channel-selector summary {
+            cursor: pointer;
+            padding: 0.75rem;
+            background-color: #f5f7fa;
+            border-radius: 4px;
+            font-weight: 500;
+            user-select: none;
+        }
+        
+        .channel-selector summary:hover {
+            background-color: #e8ecef;
+        }
+        
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.75rem;
+            padding: 1rem 0;
+        }
+        
+        .channel-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .channel-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .channel-legend {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+        
+        .channel-name-input {
+            flex: 1;
+            padding: 0.375rem 0.5rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.8125rem;
+            min-width: 0;
+        }
+        
+        .channel-name-input:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+        
+        .channel-base-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #657786;
+            margin-right: 0.25rem;
+            flex-shrink: 0;
+        }
+        
+        /* Chart */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 1rem;
+        }
+        
+        /* Export Section */
+        .export-section {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding-top: 1rem;
+            margin-top: 1rem;
+            border-top: 1px solid #e1e8ed;
+        }
+        
+        .export-section label {
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            padding: 0.75rem;
+            background-color: #f5f7fa;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: #657786;
+            margin-top: 1rem;
+        }
+        
+        /* Chat Panel */
         .chat-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
             padding-bottom: 1rem;
-            border-bottom: 2px solid #e0e0e0;
+            border-bottom: 1px solid #e1e8ed;
         }
-        .chat-header h2 { margin: 0; }
-        .mode-toggle { display: flex; gap: 0.5rem; align-items: center; }
-        .toggle-switch { position: relative; display: inline-block; width: 60px; height: 30px; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #2196F3; transition: .4s; border-radius: 30px; }
-        .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
-        input:checked + .slider { background-color: #4CAF50; }
-        input:checked + .slider:before { transform: translateX(30px); }
-        .mode-label { font-weight: bold; font-size: 0.9rem; }
-        .mode-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
-        .mode-chat { background-color: #e3f2fd; color: #1976D2; }
-        .mode-rag { background-color: #e8f5e9; color: #388E3C; }
+        
+        .chat-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background-color: #f5f7fa;
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+        
+        .mode-toggle label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #657786;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #1da1f2;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .toggle-slider {
+            background-color: #17bf63;
+        }
+        
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        
+        /* Upload Section */
         .upload-section {
-            background-color: #f0f8ff;
-            border: 2px dashed #2196F3;
+            display: none;
+            background-color: #e8f5fa;
+            border: 2px dashed #1da1f2;
             padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
+            border-radius: 6px;
             text-align: center;
+            margin-bottom: 1rem;
+        }
+        
+        .upload-section.active {
+            display: block;
+        }
+        
+        .upload-section h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .upload-section input[type="file"] {
             display: none;
         }
-        .upload-section.active { display: block; }
-        .upload-section input[type="file"] { display: none; }
-        .upload-label { display: inline-block; padding: 0.75rem 1.5rem; background-color: #2196F3; color: white; border-radius: 4px; cursor: pointer; transition: all 0.3s; font-weight: bold; }
-        .upload-label:hover { background-color: #1976D2; }
-        .file-info { margin-top: 0.5rem; font-size: 0.9rem; color: #666; }
-        #messages { border: 1px solid #e0e0e0; padding: 1rem; height: 450px; max-height: 70vh; overflow-y: auto; margin-bottom: 1rem; background-color: #fafafa; border-radius: 4px; flex: 1; }
-        .message { margin-bottom: 1rem; padding: 0.75rem; border-radius: 8px; max-width: 85%; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .user-message { background-color: #e3f2fd; margin-left: auto; text-align: right; }
-        .bot-message { background-color: #f1f8e9; margin-right: auto; }
-        .bot-message.rag-mode { background-color: #fff3e0; border-left: 4px solid #ff9800; }
-        .message-label { font-weight: bold; margin-bottom: 0.25rem; font-size: 0.85rem; opacity: 0.8; }
-        .message-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 8px; font-size: 0.7rem; margin-left: 0.5rem; background-color: #ff9800; color: white; }
-        .input-group { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-        .input-group input { flex: 1; padding: 0.75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-        .input-group input:focus { outline: none; border-color: #2196F3; }
-        .btn { padding: 0.75rem 1.5rem; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; transition: all 0.3s; white-space: nowrap; }
-        .btn-primary { background-color: #2196F3; }
-        .btn-primary:hover { background-color: #1976D2; }
-        .btn-success { background-color: #4CAF50; }
-        .btn-success:hover { background-color: #388E3C; }
-        .btn-danger { background-color: #f44336; }
-        .btn-danger:hover { background-color: #d32f2f; }
-        .btn-warning { background-color: #ff9800; }
-        .btn-warning:hover { background-color: #f57c00; }
-        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
-        .status { font-size: 0.85rem; color: #666; padding: 0.5rem; background-color: #f5f5f5; border-radius: 4px; }
-        .warning-box { background-color: #fff3cd; border: 1px solid #ffc107; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
-        .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
-        .export-section { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; flex-wrap: wrap; }
-        .session-info { background-color: #e8f5e9; padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.9rem; }
-        .channel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
-        .channel-card { border: 1px solid #e0e0e0; border-radius: 6px; padding: 0.75rem; background: #fafafa; }
-        .channel-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-weight: bold; }
-        .channel-name { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
-        .channel-legend { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
-        .session-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; align-items: center; }
-        .saved-sessions { margin-top: 0.5rem; background: #f7f9fc; border: 1px solid #dfe3eb; border-radius: 6px; padding: 0.75rem; max-height: 150px; overflow-y: auto; }
+        
+        .upload-label {
+            display: inline-block;
+            padding: 0.625rem 1.25rem;
+            background-color: #1da1f2;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+        
+        .upload-label:hover {
+            background-color: #1a91da;
+        }
+        
+        .file-info {
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #657786;
+        }
+        
+        /* Messages */
+        #messages {
+            height: 450px;
+            overflow-y: auto;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            background-color: #f5f7fa;
+        }
+        
+        .message {
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            max-width: 85%;
+            animation: slideIn 0.2s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            background-color: #1da1f2;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.assistant {
+            background-color: white;
+            border: 1px solid #e1e8ed;
+        }
+        
+        .message.assistant.rag {
+            background-color: #fff4e6;
+            border-left: 3px solid #ff9800;
+        }
+        
+        .message-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            opacity: 0.8;
+        }
+        
+        .message-content {
+            font-size: 0.9375rem;
+            line-height: 1.5;
+        }
+        
+        /* Input Group */
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .input-group input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 0.9375rem;
+        }
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+        
+        /* Responsive */
         @media (max-width: 1200px) {
-            .main-container { flex-direction: column; }
-            .left-panel, .right-panel { min-width: 100%; }
+            .main-container {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <nav>
-        <a href="/admin" style="background-color:#4CAF50;color:#fff;">Admin Dashboard</a>
-        <a href="/logout" style="background-color:#f44336;color:#fff;">Logout</a>
+        <div class="brand">iDAQ Diagnostics</div>
+        <div class="nav-links">
+            <a href="/admin">Admin</a>
+            <a href="/logout">Logout</a>
+        </div>
     </nav>
 
     <div class="main-container">
-        <!-- Left Panel: Sensor Graph -->
-        <div class="left-panel">
-            <div class="container">
-                <h1 style="margin-top: 0;">Sensor Monitoring</h1>
-
-                <div class="session-info" id="sessionInfo">
-                    <strong>📊 Current Session:</strong> Not started | <strong>Data Points:</strong> 0
+        <!-- Monitoring Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <h1>Real-Time Monitoring</h1>
+                <div class="session-badge">
+                    <span id="sessionTime">0:00</span>
+                    <span id="sessionPoints">0 points</span>
                 </div>
-
-                <div class="warning-box" id="gpioWarning">
-                    <strong>⚠️ GPIO Not Connected</strong><br>
-                    Sensor graph is currently disabled. Connect your GPIO sensors and click "Start Monitoring" to begin data collection.
-                </div>
-
-                <div class="session-actions">
-                    <button class="btn btn-primary" id="googleSignIn" onclick="signInWithGoogle()">Sign in with Google</button>
-                    <button class="btn btn-success" id="saveSessionButton" onclick="saveSessionToHistory()" disabled>💾 Save Session to History</button>
-                    <span id="authStatus" style="color:#555; font-size:0.95rem;">Not signed in</span>
-                </div>
-                <div class="saved-sessions" id="savedSessions" style="display:none;"></div>
-
-                <div class="controls">
-                    <button id="startMonitoringButton" class="btn btn-success" onclick="startMonitoring()">▶ Start Monitoring</button>
-                    <button id="stopMonitoringButton" class="btn btn-danger" onclick="stopMonitoring()" style="display:none;">⏸ Stop Monitoring</button>
-                    <button id="simulateModeButton" class="btn btn-warning" onclick="toggleSimulateMode()">🔄 Enable Simulation</button>
-                    <button class="btn btn-primary" onclick="clearGraph()">🗑️ Clear Graph</button>
-                </div>
-
-                <h3 style="margin-bottom: 0.25rem;">Channel Selection & Naming</h3>
-                <p style="margin-top:0; color:#555;">Enable only the channels you want plotted and add helpful names. Base labels V1-4, C1-4, T1-4 stay fixed.</p>
-                <div class="channel-grid" id="channelGrid"></div>
-
-                <canvas id="sensorChart"></canvas>
-
-                <div class="export-section">
-                    <strong>Export Session Data:</strong>
-                    <button class="btn btn-primary" onclick="exportToCSV()">📥 CSV</button>
-                    <button class="btn btn-primary" onclick="exportToJSON()">📥 JSON</button>
-                    <button class="btn btn-primary" onclick="exportChatHistory()">💬 Chat</button>
-                </div>
-
-                <div class="status" id="chartStatus">Monitoring not started. Click "Start Monitoring" when GPIO is ready.</div>
             </div>
+
+            <div class="controls">
+                <button id="startBtn" class="btn btn-success" onclick="startMonitoring()">Start</button>
+                <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()" style="display:none;">Stop</button>
+                <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Simulation Mode</button>
+                <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
+            </div>
+
+            <details class="channel-selector">
+                <summary>Channel Selection</summary>
+                <div class="channel-grid" id="channelGrid"></div>
+            </details>
+
+            <div class="chart-container">
+                <canvas id="sensorChart"></canvas>
+            </div>
+
+            <div class="export-section">
+                <label>Export:</label>
+                <button class="btn btn-primary" onclick="exportToCSV()">CSV</button>
+                <button class="btn btn-primary" onclick="exportToJSON()">JSON</button>
+                <button class="btn btn-primary" onclick="exportChat()">Chat</button>
+            </div>
+
+            <div class="status-bar" id="statusBar">Ready to start monitoring</div>
         </div>
 
-        <!-- Right Panel: Unified Chat -->
-        <div class="right-panel">
-            <div class="container">
-                <div class="chat-header">
-                    <h2>💬 Diagnostic Assistant</h2>
-                    <div class="mode-toggle">
-                        <span class="mode-label">Chat</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="ragToggle" onchange="toggleRagMode()">
-                            <span class="slider"></span>
-                        </label>
-                        <span class="mode-label">RAG</span>
-                        <span class="mode-badge mode-chat" id="modeBadge">💬 Chat Mode</span>
-                    </div>
-                </div>
-
-                <!-- Upload Section (shown only in RAG mode) -->
-                <div class="upload-section" id="uploadSection">
-                    <h3 style="margin-top: 0;">📄 Upload Device Datasheet</h3>
-                    <p style="margin: 0.5rem 0; font-size: 0.9rem;">Upload PDF datasheets to enable RAG-powered answers</p>
-                    <input type="file" id="pdfUpload" accept=".pdf" onchange="handlePdfUpload(event)">
-                    <label for="pdfUpload" class="upload-label">
-                        📁 Choose PDF File
+        <!-- Chat Panel -->
+        <div class="panel">
+            <div class="chat-header">
+                <h2>AI Assistant</h2>
+                <div class="mode-toggle">
+                    <label>Chat</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ragToggle" onchange="toggleRagMode()">
+                        <span class="toggle-slider"></span>
                     </label>
-                    <div class="file-info" id="fileInfo">No file selected</div>
-                    <div class="status" id="uploadStatus" style="margin-top: 0.5rem;"></div>
+                    <label>RAG</label>
                 </div>
-
-                <!-- Unified Chat Messages -->
-                <div id="messages"></div>
-
-                <!-- Input Section -->
-                <div class="input-group">
-                    <input type="text" id="userInput" placeholder="Ask a question..." onkeypress="handleKeyPress(event)">
-                    <button class="btn btn-primary" id="sendButton" onclick="sendMessage()">Send</button>
-                </div>
-                <div class="status" id="chatStatus"></div>
             </div>
+
+            <div class="upload-section" id="uploadSection">
+                <h3>Upload Datasheet PDF</h3>
+                <input type="file" id="pdfUpload" accept=".pdf" onchange="handlePdfUpload(event)">
+                <label for="pdfUpload" class="upload-label">Choose PDF</label>
+                <div class="file-info" id="fileInfo">No file selected</div>
+                <div class="status-bar" id="uploadStatus"></div>
+            </div>
+
+            <div id="messages"></div>
+
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="Ask a question..." onkeypress="handleKeyPress(event)">
+                <button class="btn btn-primary" id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+            <div class="status-bar" id="chatStatus"></div>
         </div>
     </div>
 
     <script>
-        // Firebase setup (expects FIREBASE_CONFIG global or placeholder values)
-        let firebaseReady = false;
-        let currentUser = null;
-        try {
-            const firebaseConfig = window.FIREBASE_CONFIG || {
-                apiKey: "YOUR_API_KEY",
-                authDomain: "YOUR_AUTH_DOMAIN",
-                projectId: "YOUR_PROJECT_ID",
-                appId: "YOUR_APP_ID"
-            };
-            firebase.initializeApp(firebaseConfig);
-            firebaseReady = true;
-            firebase.auth().onAuthStateChanged(user => {
-                currentUser = user;
-                updateAuthStatus();
-            });
-        } catch (err) {
-            console.warn('Firebase not configured. Set window.FIREBASE_CONFIG to enable Google sign-in.', err);
-            document.getElementById('authStatus').textContent = 'Google sign-in unavailable (configure FIREBASE_CONFIG).';
-        }
-
-        // Chart.js setup
-        const channelDefinitions = [
-            { id: 'V1', type: 'voltage', index: 0, color: '#ef5350' },
-            { id: 'V2', type: 'voltage', index: 1, color: '#e53935' },
-            { id: 'V3', type: 'voltage', index: 2, color: '#c62828' },
-            { id: 'V4', type: 'voltage', index: 3, color: '#ad1457' },
-            { id: 'C1', type: 'current', index: 0, color: '#42a5f5' },
-            { id: 'C2', type: 'current', index: 1, color: '#1e88e5' },
-            { id: 'C3', type: 'current', index: 2, color: '#1565c0' },
-            { id: 'C4', type: 'current', index: 3, color: '#0d47a1' },
-            { id: 'T1', type: 'temperature', index: 0, color: '#ffb300' },
-            { id: 'T2', type: 'temperature', index: 1, color: '#f57c00' },
-            { id: 'T3', type: 'temperature', index: 2, color: '#fb8c00' },
-            { id: 'T4', type: 'temperature', index: 3, color: '#e65100' }
+        // Channel definitions
+        const channels = [
+            { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
+            { id: 'V2', type: 'voltage', index: 1, color: '#e53935', baseLabel: 'V2', customName: '' },
+            { id: 'V3', type: 'voltage', index: 2, color: '#c62828', baseLabel: 'V3', customName: '' },
+            { id: 'V4', type: 'voltage', index: 3, color: '#ad1457', baseLabel: 'V4', customName: '' },
+            { id: 'C1', type: 'current', index: 0, color: '#42a5f5', baseLabel: 'C1', customName: '' },
+            { id: 'C2', type: 'current', index: 1, color: '#1e88e5', baseLabel: 'C2', customName: '' },
+            { id: 'C3', type: 'current', index: 2, color: '#1565c0', baseLabel: 'C3', customName: '' },
+            { id: 'C4', type: 'current', index: 3, color: '#0d47a1', baseLabel: 'C4', customName: '' },
+            { id: 'T1', type: 'temperature', index: 0, color: '#ffb300', baseLabel: 'T1', customName: '' },
+            { id: 'T2', type: 'temperature', index: 1, color: '#f57c00', baseLabel: 'T2', customName: '' },
+            { id: 'T3', type: 'temperature', index: 2, color: '#fb8c00', baseLabel: 'T3', customName: '' },
+            { id: 'T4', type: 'temperature', index: 3, color: '#e65100', baseLabel: 'T4', customName: '' }
         ];
 
         const channelState = {};
-        channelDefinitions.forEach(def => {
-            channelState[def.id] = { selected: true, customName: '' };
-        });
+        channels.forEach(ch => channelState[ch.id] = true);
 
+        // Chart setup
         const ctx = document.getElementById('sensorChart').getContext('2d');
-        const datasets = channelDefinitions.map(def => ({
-            label: def.id,
+        const datasets = channels.map(ch => ({
+            label: ch.baseLabel,
             data: [],
-            borderColor: def.color,
-            backgroundColor: `${def.color}33`,
+            borderColor: ch.color,
+            backgroundColor: ch.color + '33',
             tension: 0.4
         }));
 
-        const datasetIndex = {};
-        datasets.forEach((ds, idx) => { datasetIndex[ds.label] = idx; });
-
-        const sensorChart = new Chart(ctx, {
+        const chart = new Chart(ctx, {
             type: 'line',
             data: { labels: [], datasets },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
-                aspectRatio: 2,
+                maintainAspectRatio: false,
                 scales: { y: { beginAtZero: true } },
                 plugins: {
-                    title: { display: true, text: 'Real-time Sensor Data', font: { size: 16 } },
-                    legend: { display: true }
+                    legend: {
+                        labels: {
+                            filter: (item) => {
+                                const ch = channels.find(c => c.baseLabel === item.text);
+                                return ch && channelState[ch.id];
+                            },
+                            generateLabels: (chart) => {
+                                const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                return original.map(label => {
+                                    const ch = channels.find(c => c.baseLabel === label.text);
+                                    if (ch && ch.customName.trim()) {
+                                        label.text = `${ch.baseLabel} - ${ch.customName}`;
+                                    }
+                                    return label;
+                                });
+                            }
+                        }
+                    }
                 }
             }
         });
 
-        // State management
-        let isMonitoring = false;
-        let simulateMode = false;
-        let monitoringInterval = null;
-        let sessionStartTime = null;
-        const maxDataPoints = 100;
+        // State
+        let monitoring = false;
+        let simulation = false;
+        let monitorInterval = null;
+        let sessionStart = null;
+        let sessionInterval = null;
         let sessionData = [];
         let chatHistory = [];
-        let isRagMode = false;
+        let ragMode = false;
+        const MAX_POINTS = 100;
 
-        function updateAuthStatus() {
-            const status = document.getElementById('authStatus');
-            const saveButton = document.getElementById('saveSessionButton');
-            const savedList = document.getElementById('savedSessions');
-
-            if (currentUser) {
-                status.textContent = `Signed in as ${currentUser.email}`;
-                saveButton.disabled = false;
-                renderSavedSessions();
-                savedList.style.display = 'block';
-            } else {
-                status.textContent = 'Not signed in';
-                saveButton.disabled = true;
-                savedList.style.display = 'none';
-            }
-        }
-
-        function signInWithGoogle() {
-            if (!firebaseReady) return;
-            const provider = new firebase.auth.GoogleAuthProvider();
-            firebase.auth().signInWithPopup(provider).catch(err => {
-                console.error('Google sign-in failed', err);
-                document.getElementById('authStatus').textContent = 'Google sign-in failed. Check console.';
-            });
-        }
-
-        function renderChannelControls() {
+        // Render channel checkboxes
+        function renderChannels() {
             const grid = document.getElementById('channelGrid');
             grid.innerHTML = '';
-            channelDefinitions.forEach(def => {
-                const card = document.createElement('div');
-                card.className = 'channel-card';
-
-                const header = document.createElement('div');
-                header.className = 'channel-header';
+            channels.forEach(ch => {
+                const div = document.createElement('div');
+                div.className = 'channel-item';
+                
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = channelState[def.id].selected;
-                checkbox.onchange = (e) => toggleChannel(def.id, e.target.checked);
-
+                checkbox.id = ch.id;
+                checkbox.checked = channelState[ch.id];
+                checkbox.onchange = () => toggleChannel(ch.id);
+                
                 const legend = document.createElement('span');
                 legend.className = 'channel-legend';
-                legend.style.backgroundColor = def.color;
-
-                const label = document.createElement('span');
-                label.textContent = def.id;
-
-                header.appendChild(checkbox);
-                header.appendChild(legend);
-                header.appendChild(label);
-                card.appendChild(header);
-
-                const input = document.createElement('input');
-                input.className = 'channel-name';
-                input.placeholder = 'Custom name (e.g., MOSFET voltage)';
-                input.value = channelState[def.id].customName;
-                input.oninput = (e) => updateChannelName(def.id, e.target.value);
-                card.appendChild(input);
-
-                grid.appendChild(card);
+                legend.style.backgroundColor = ch.color;
+                
+                const baseLabel = document.createElement('span');
+                baseLabel.className = 'channel-base-label';
+                baseLabel.textContent = ch.baseLabel;
+                
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'channel-name-input';
+                nameInput.placeholder = 'Custom name...';
+                nameInput.value = ch.customName;
+                nameInput.oninput = (e) => updateChannelName(ch.id, e.target.value);
+                
+                div.appendChild(checkbox);
+                div.appendChild(legend);
+                div.appendChild(baseLabel);
+                div.appendChild(nameInput);
+                grid.appendChild(div);
             });
         }
 
-        function channelLabel(def) {
-            const custom = channelState[def.id].customName.trim();
-            return custom ? `${def.id} - ${custom}` : def.id;
+        function toggleChannel(id) {
+            channelState[id] = !channelState[id];
+            chart.update();
         }
-
-        function toggleChannel(id, enabled) {
-            channelState[id].selected = enabled;
-            const idx = datasetIndex[id];
-            sensorChart.data.datasets[idx].hidden = !enabled;
-            sensorChart.update();
-        }
-
-        function updateChannelName(id, value) {
-            channelState[id].customName = value;
-            const idx = datasetIndex[id];
-            sensorChart.data.datasets[idx].label = channelLabel(channelDefinitions[idx]);
-            sensorChart.update();
-        }
-
-        // RAG Mode Toggle
-        function toggleRagMode() {
-            isRagMode = document.getElementById('ragToggle').checked;
-            const badge = document.getElementById('modeBadge');
-            const uploadSection = document.getElementById('uploadSection');
-            const input = document.getElementById('userInput');
-
-            if (isRagMode) {
-                badge.textContent = '📚 RAG Mode';
-                badge.classList.remove('mode-chat');
-                badge.classList.add('mode-rag');
-                uploadSection.classList.add('active');
-                input.placeholder = 'Ask about datasheets...';
-                addMessage('RAG mode enabled. I can now answer questions using uploaded datasheets!', false, true);
-            } else {
-                badge.textContent = '💬 Chat Mode';
-                badge.classList.remove('mode-rag');
-                badge.classList.add('mode-chat');
-                uploadSection.classList.remove('active');
-                input.placeholder = 'Ask a question...';
-                addMessage('Chat mode enabled. Ask me anything about diagnostics!', false, false);
-            }
-        }
-
-        // PDF Upload Handler
-        async function handlePdfUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
-            document.getElementById('uploadStatus').textContent = 'Uploading and processing...';
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/upload-pdf', { method: 'POST', body: formData });
-                const data = await response.json();
-
-                if (response.ok) {
-                    document.getElementById('uploadStatus').textContent = `✅ ${data.message}`;
-                    document.getElementById('uploadStatus').style.backgroundColor = '#d4edda';
-                    addMessage(`📄 Datasheet "${file.name}" has been uploaded and indexed successfully! You can now ask questions about it.`, false, true);
-                } else {
-                    document.getElementById('uploadStatus').textContent = `❌ Error: ${data.error}`;
-                    document.getElementById('uploadStatus').style.backgroundColor = '#f8d7da';
-                }
-            } catch (error) {
-                console.error('Upload error:', error);
-                document.getElementById('uploadStatus').textContent = '❌ Upload failed. Check connection.';
-                document.getElementById('uploadStatus').style.backgroundColor = '#f8d7da';
+        
+        function updateChannelName(id, name) {
+            const ch = channels.find(c => c.id === id);
+            if (ch) {
+                ch.customName = name;
+                chart.update();
             }
         }
 
         function updateSessionInfo() {
-            const duration = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0;
-            const minutes = Math.floor(duration / 60);
-            const seconds = duration % 60;
-            const timeStr = `${minutes}m ${seconds}s`;
-
-            document.getElementById('sessionInfo').innerHTML =
-                `<strong>📊 Current Session:</strong> ${isMonitoring ? 'Active (' + timeStr + ')' : 'Stopped'} | ` +
-                `<strong>Data Points:</strong> ${sessionData.length} | ` +
-                `<strong>Mode:</strong> ${simulateMode ? 'SIMULATION' : 'LIVE GPIO'}`;
+            if (!sessionStart) return;
+            const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('sessionTime').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('sessionPoints').textContent = 
+                `${sessionData.length} points`;
         }
 
         function startMonitoring() {
-            if (isMonitoring) return;
-
-            isMonitoring = true;
-            sessionStartTime = Date.now();
+            if (monitoring) return;
+            
+            monitoring = true;
+            sessionStart = Date.now();
             sessionData = [];
-
-            document.getElementById('startMonitoringButton').style.display = 'none';
-            document.getElementById('stopMonitoringButton').style.display = 'inline-block';
-            document.getElementById('gpioWarning').style.display = 'none';
-            document.getElementById('simulateModeButton').disabled = true;
-
-            updateSessionInfo();
-            updateSensorData();
-            monitoringInterval = setInterval(updateSensorData, 2000);
-            setInterval(updateSessionInfo, 1000);
+            
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('simBtn').disabled = true;
+            
+            monitorInterval = setInterval(fetchSensorData, 2000);
+            sessionInterval = setInterval(updateSessionInfo, 1000);
+            fetchSensorData();
         }
 
         function stopMonitoring() {
-            if (!isMonitoring) return;
-
-            isMonitoring = false;
-            clearInterval(monitoringInterval);
-
-            document.getElementById('startMonitoringButton').style.display = 'inline-block';
-            document.getElementById('stopMonitoringButton').style.display = 'none';
-            document.getElementById('simulateModeButton').disabled = false;
-            document.getElementById('chartStatus').textContent = 'Monitoring stopped. Session data preserved for export.';
-
-            updateSessionInfo();
+            if (!monitoring) return;
+            
+            monitoring = false;
+            clearInterval(monitorInterval);
+            clearInterval(sessionInterval);
+            
+            document.getElementById('startBtn').style.display = 'inline-block';
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('simBtn').disabled = false;
+            document.getElementById('statusBar').textContent = 'Monitoring stopped';
         }
 
-        function toggleSimulateMode() {
-            simulateMode = !simulateMode;
-            const button = document.getElementById('simulateModeButton');
-
-            if (simulateMode) {
-                button.textContent = '✓ Simulation Enabled';
-                button.classList.remove('btn-warning');
-                button.classList.add('btn-success');
-                document.getElementById('gpioWarning').innerHTML =
-                    '<strong>ℹ️ Simulation Mode Enabled</strong><br>' +
-                    'The system will generate simulated sensor data for testing. Click "Start Monitoring" to begin.';
-                document.getElementById('gpioWarning').style.backgroundColor = '#d1ecf1';
-                document.getElementById('gpioWarning').style.borderColor = '#17a2b8';
-            } else {
-                button.textContent = '🔄 Enable Simulation';
-                button.classList.remove('btn-success');
-                button.classList.add('btn-warning');
-                document.getElementById('gpioWarning').innerHTML =
-                    '<strong>⚠️ GPIO Not Connected</strong><br>' +
-                    'Sensor graph is currently disabled. Connect your GPIO sensors and click "Start Monitoring" to begin data collection.';
-                document.getElementById('gpioWarning').style.backgroundColor = '#fff3cd';
-                document.getElementById('gpioWarning').style.borderColor = '#ffc107';
-            }
-            updateSessionInfo();
+        function toggleSimulation() {
+            simulation = !simulation;
+            const btn = document.getElementById('simBtn');
+            btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
+            btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
         }
 
         function clearGraph() {
-            if (confirm('Clear all graph data? Session data will still be available for export.')) {
-                sensorChart.data.labels = [];
-                sensorChart.data.datasets.forEach(dataset => dataset.data = []);
-                sensorChart.update();
+            if (confirm('Clear graph data?')) {
+                chart.data.labels = [];
+                chart.data.datasets.forEach(ds => ds.data = []);
+                chart.update();
             }
         }
 
-        async function updateSensorData() {
-            if (!isMonitoring) return;
-
+        async function fetchSensorData() {
+            if (!monitoring) return;
+            
             try {
                 const response = await fetch('/sensor-data');
                 const data = await response.json();
-
+                
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
-
-                const dataPoint = {
+                
+                sessionData.push({
                     timestamp: timestamp.toISOString(),
                     time: timeStr,
                     voltage: data.voltage,
                     current: data.current,
                     temperature: data.temperature
-                };
-                sessionData.push(dataPoint);
-
-                sensorChart.data.labels.push(timeStr);
-                channelDefinitions.forEach((def, idx) => {
-                    const channelValue = data[def.type]?.[def.index] ?? null;
-                    const shouldPlot = channelState[def.id].selected;
-                    sensorChart.data.datasets[idx].data.push(shouldPlot ? channelValue : null);
+                });
+                
+                chart.data.labels.push(timeStr);
+                channels.forEach((ch, idx) => {
+                    const value = data[ch.type]?.[ch.index] ?? null;
+                    chart.data.datasets[idx].data.push(channelState[ch.id] ? value : null);
                 });
 
-                if (sensorChart.data.labels.length > maxDataPoints) {
-                    sensorChart.data.labels.shift();
-                    sensorChart.data.datasets.forEach(dataset => dataset.data.shift());
+                if (chart.data.labels.length > MAX_POINTS) {
+                    chart.data.labels.shift();
+                    chart.data.datasets.forEach(ds => ds.data.shift());
                 }
 
-                sensorChart.update();
-
-                const mode = simulateMode ? 'SIMULATED' : 'LIVE';
-                const summary = `${mode} | Last: ${timeStr} | V1: ${data.voltage[0]}V, C1: ${data.current[0]}A, T1: ${data.temperature[0]}°C`;
-                document.getElementById('chartStatus').textContent = summary;
-
-                updateSessionInfo();
+                chart.update();
+                
+                const mode = simulation ? 'SIM' : 'LIVE';
+                document.getElementById('statusBar').textContent = 
+                    `${mode} | ${timeStr} | V1: ${data.voltage[0]}V C1: ${data.current[0]}A T1: ${data.temperature[0]}°C`;
             } catch (error) {
-                console.error('Error fetching sensor data:', error);
-                document.getElementById('chartStatus').textContent = 'Error fetching sensor data. Check GPIO connection.';
+                console.error('Sensor data error:', error);
                 stopMonitoring();
             }
         }
 
         // Export functions
         function exportToCSV() {
-            if (sessionData.length === 0) { alert('No data to export. Start monitoring first.'); return; }
-
-            const headers = ['Timestamp', 'Time', ...channelDefinitions.map(def => channelLabel(def))];
+            if (sessionData.length === 0) { alert('No data'); return; }
+            
+            const headers = ['Timestamp', 'Time', ...channels.map(ch => {
+                return ch.customName.trim() ? `${ch.baseLabel} - ${ch.customName}` : ch.baseLabel;
+            })];
             const rows = sessionData.map(d => {
-                const values = channelDefinitions.map(def => d[def.type]?.[def.index] ?? '');
+                const values = channels.map(ch => d[ch.type]?.[ch.index] ?? '');
                 return [d.timestamp, d.time, ...values];
             });
-
+            
             let csv = headers.join(',') + '\n';
             csv += rows.map(row => row.join(',')).join('\n');
-            downloadFile(csv, `idaq_session_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`, 'text/csv');
+            download(csv, `idaq_${Date.now()}.csv`, 'text/csv');
         }
 
         function exportToJSON() {
-            if (sessionData.length === 0) { alert('No data to export. Start monitoring first.'); return; }
-
-            const exportData = {
+            if (sessionData.length === 0) { alert('No data'); return; }
+            
+            const json = JSON.stringify({
                 session: {
-                    startTime: sessionStartTime ? new Date(sessionStartTime).toISOString() : null,
+                    startTime: new Date(sessionStart).toISOString(),
                     endTime: new Date().toISOString(),
-                    mode: simulateMode ? 'simulation' : 'live',
-                    dataPoints: sessionData.length,
-                    channels: channelDefinitions.map(def => ({ base: def.id, name: channelLabel(def), enabled: channelState[def.id].selected }))
+                    mode: simulation ? 'simulation' : 'live',
+                    dataPoints: sessionData.length
                 },
                 data: sessionData
-            };
-
-            const json = JSON.stringify(exportData, null, 2);
-            downloadFile(json, `idaq_session_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`, 'application/json');
+            }, null, 2);
+            download(json, `idaq_${Date.now()}.json`, 'application/json');
         }
 
-        function exportChatHistory() {
-            if (chatHistory.length === 0) { alert('No chat history to export.'); return; }
-
-            const exportData = { exportTime: new Date().toISOString(), messages: chatHistory };
-            const json = JSON.stringify(exportData, null, 2);
-            downloadFile(json, `idaq_chat_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`, 'application/json');
+        function exportChat() {
+            if (chatHistory.length === 0) { alert('No chat history'); return; }
+            const json = JSON.stringify({ exportTime: new Date().toISOString(), messages: chatHistory }, null, 2);
+            download(json, `idaq_chat_${Date.now()}.json`, 'application/json');
         }
 
-        function downloadFile(content, filename, mimeType) {
-            const blob = new Blob([content], { type: mimeType });
+        function download(content, filename, type) {
+            const blob = new Blob([content], { type });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
-            document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
 
-        // Unified Chat functionality
-        function addMessage(text, isUser, useRag = false) {
-            const messagesDiv = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
-
-            if (!isUser && useRag) { messageDiv.classList.add('rag-mode'); }
-
-            const label = document.createElement('div');
-            label.className = 'message-label';
-            label.innerHTML = isUser ? 'You' : 'AI Assistant' + (useRag && !isUser ? '<span class="message-badge">RAG</span>' : '');
-
-            const content = document.createElement('div');
-            content.textContent = text;
-
-            messageDiv.appendChild(label);
-            messageDiv.appendChild(content);
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-            chatHistory.push({ timestamp: new Date().toISOString(), sender: isUser ? 'user' : 'assistant', mode: useRag ? 'rag' : 'chat', message: text });
+        // Chat functions
+        function toggleRagMode() {
+            ragMode = document.getElementById('ragToggle').checked;
+            const uploadSection = document.getElementById('uploadSection');
+            const input = document.getElementById('userInput');
+            
+            if (ragMode) {
+                uploadSection.classList.add('active');
+                input.placeholder = 'Ask about datasheets...';
+                addMessage('RAG mode enabled', false, true);
+            } else {
+                uploadSection.classList.remove('active');
+                input.placeholder = 'Ask a question...';
+                addMessage('Chat mode enabled', false, false);
+            }
         }
 
-        function buildSensorContext() {
-            if (!simulateMode || sessionData.length === 0) return null;
-            const recent = sessionData.slice(-5);
-            return {
-                mode: 'simulation',
-                recentReadings: recent,
-                channelNames: channelDefinitions.map(def => ({ base: def.id, label: channelLabel(def) })),
-                selectedChannels: channelDefinitions.filter(def => channelState[def.id].selected).map(def => def.id)
-            };
+        async function handlePdfUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
+            document.getElementById('uploadStatus').textContent = 'Uploading...';
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/upload-pdf', { method: 'POST', body: formData });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('uploadStatus').textContent = data.message;
+                    addMessage(`PDF "${file.name}" uploaded successfully`, false, true);
+                } else {
+                    document.getElementById('uploadStatus').textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                document.getElementById('uploadStatus').textContent = 'Upload failed';
+            }
+        }
+
+        function addMessage(text, isUser, isRag = false) {
+            const container = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${isUser ? 'user' : 'assistant'}${isRag && !isUser ? ' rag' : ''}`;
+            
+            const label = document.createElement('div');
+            label.className = 'message-label';
+            label.textContent = isUser ? 'You' : 'Assistant';
+            
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            content.textContent = text;
+            
+            div.appendChild(label);
+            div.appendChild(content);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            
+            chatHistory.push({
+                timestamp: new Date().toISOString(),
+                sender: isUser ? 'user' : 'assistant',
+                mode: isRag ? 'rag' : 'chat',
+                message: text
+            });
         }
 
         async function sendMessage() {
             const input = document.getElementById('userInput');
-            const sendButton = document.getElementById('sendButton');
-            const statusDiv = document.getElementById('chatStatus');
-            const message = input.value.trim();
-
-            if (!message) return;
-
-            addMessage(message, true);
+            const msg = input.value.trim();
+            if (!msg) return;
+            
+            addMessage(msg, true);
             input.value = '';
-
-            sendButton.disabled = true;
-            statusDiv.textContent = isRagMode ? 'Searching datasheets...' : 'Waiting for response...';
-
+            
+            const sendBtn = document.getElementById('sendBtn');
+            const status = document.getElementById('chatStatus');
+            sendBtn.disabled = true;
+            status.textContent = ragMode ? 'Searching...' : 'Thinking...';
+            
             try {
-                const endpoint = isRagMode ? '/ask-rag' : '/chat';
-                const bodyKey = isRagMode ? 'question' : 'message';
-                const context = buildSensorContext();
-
+                const endpoint = ragMode ? '/ask-rag' : '/chat';
+                const key = ragMode ? 'question' : 'message';
+                const context = sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null;
+                
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ [bodyKey]: message, context })
+                    body: JSON.stringify({ [key]: msg, context })
                 });
-
+                
                 const data = await response.json();
-
+                
                 if (response.ok) {
-                    addMessage(data.response, false, isRagMode);
-                    statusDiv.textContent = 'Response received';
+                    addMessage(data.response, false, ragMode);
+                    status.textContent = 'Ready';
                 } else {
-                    addMessage(`Error: ${data.response || 'Unknown error'}`, false, isRagMode);
-                    statusDiv.textContent = 'Error occurred';
+                    addMessage(`Error: ${data.response}`, false, ragMode);
+                    status.textContent = 'Error';
                 }
             } catch (error) {
-                console.error('Error sending message:', error);
-                addMessage('Error: Could not connect to the server. Make sure Ollama is running.', false, isRagMode);
-                statusDiv.textContent = 'Connection error';
+                addMessage('Connection error. Is Ollama running?', false, ragMode);
+                status.textContent = 'Error';
             } finally {
-                sendButton.disabled = false;
+                sendBtn.disabled = false;
             }
         }
 
-        function handleKeyPress(event) { if (event.key === 'Enter') sendMessage(); }
-
-        function saveSessionToHistory() {
-            if (!currentUser) { alert('Sign in with Google first.'); return; }
-            if (sessionData.length === 0) { alert('No session data to save.'); return; }
-
-            const historyKey = `idaq_history_${currentUser.email}`;
-            const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-            const saved = {
-                savedAt: new Date().toISOString(),
-                session: {
-                    startTime: sessionStartTime ? new Date(sessionStartTime).toISOString() : null,
-                    mode: simulateMode ? 'simulation' : 'live',
-                    dataPoints: sessionData.length,
-                    channels: channelDefinitions.map(def => ({ base: def.id, name: channelLabel(def), enabled: channelState[def.id].selected }))
-                },
-                data: sessionData.slice(-maxDataPoints)
-            };
-            history.push(saved);
-            localStorage.setItem(historyKey, JSON.stringify(history));
-            renderSavedSessions();
-            alert('Session saved to your account history (local to this browser).');
-        }
-
-        function renderSavedSessions() {
-            if (!currentUser) return;
-            const historyKey = `idaq_history_${currentUser.email}`;
-            const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-            const container = document.getElementById('savedSessions');
-            if (history.length === 0) {
-                container.textContent = 'No saved sessions yet.';
-                return;
-            }
-            container.innerHTML = '<strong>Saved sessions:</strong>';
-            const list = document.createElement('ul');
-            list.style.paddingLeft = '1.2rem';
-            history.slice(-5).reverse().forEach(item => {
-                const li = document.createElement('li');
-                const start = item.session.startTime || 'N/A';
-                li.textContent = `${start} • ${item.session.mode.toUpperCase()} • ${item.session.dataPoints} points`;
-                list.appendChild(li);
-            });
-            container.appendChild(list);
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
         }
 
         // Initialize
         window.addEventListener('load', () => {
-            renderChannelControls();
-            addMessage("Hello! I'm your diagnostic assistant. Ask me about sensor readings, fault diagnosis, or system status. Toggle RAG mode to query uploaded datasheets!", false, false);
-            updateSessionInfo();
-            updateAuthStatus();
+            renderChannels();
+            addMessage('Hello! Ask me anything about diagnostics.', false, false);
         });
     </script>
 </body>
