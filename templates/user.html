@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iDAQ User Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { 
             box-sizing: border-box;
@@ -26,6 +27,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 1rem;
         }
         
         nav .brand {
@@ -43,9 +45,49 @@
             border-radius: 4px;
             transition: background-color 0.2s;
         }
-        
+
         nav .nav-links a:hover {
             background-color: rgba(255,255,255,0.1);
+        }
+
+        .auth-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .auth-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.9rem;
+        }
+
+        .auth-chip .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #1df275;
+            box-shadow: 0 0 0 3px rgba(29, 242, 117, 0.25);
+        }
+
+        .auth-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .auth-controls input {
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            border: none;
+            font-size: 0.9rem;
         }
         
         /* Main Layout */
@@ -235,10 +277,18 @@
             margin-top: 1rem;
             border-top: 1px solid #e1e8ed;
         }
-        
+
         .export-section label {
             font-weight: 500;
             margin-right: 0.5rem;
+        }
+
+        .export-section input,
+        .export-section select {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.9rem;
         }
         
         /* Status Bar */
@@ -461,6 +511,18 @@
 <body>
     <nav>
         <div class="brand">iDAQ Diagnostics</div>
+        <div class="auth-bar">
+            <div class="auth-chip" id="googleProfile" style="display:none;">
+                <span class="status-dot"></span>
+                <span id="googleEmail">Signed in</span>
+            </div>
+            <div class="auth-controls">
+                <input type="text" id="googleClientId" placeholder="Google Client ID" aria-label="Google Client ID">
+                <button class="btn btn-secondary" onclick="applyGoogleClientId()">Load</button>
+            </div>
+            <div id="googleSignInContainer"></div>
+            <button id="googleSignOut" class="btn btn-secondary" style="display:none;" onclick="googleSignOut()">Sign out</button>
+        </div>
         <div class="nav-links">
             <a href="/admin">Admin</a>
             <a href="/logout">Logout</a>
@@ -500,6 +562,18 @@
                 <button class="btn btn-primary" onclick="exportToJSON()">JSON</button>
                 <button class="btn btn-primary" onclick="exportChat()">Chat</button>
             </div>
+
+            <div class="export-section">
+                <label>Save to Firebase:</label>
+                <input type="text" id="userId" placeholder="User ID or email" aria-label="User ID">
+                <select id="sessionFormat" aria-label="Select format">
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                </select>
+                <button class="btn btn-primary" onclick="saveSessionToFirebase()">Upload Session</button>
+            </div>
+
+            <div class="status-bar" id="firebaseStatus">Session data will be uploaded to Firebase when configured.</div>
 
             <div class="status-bar" id="statusBar">Ready to start monitoring</div>
         </div>
@@ -606,6 +680,109 @@
         let chatHistory = [];
         let ragMode = false;
         const MAX_POINTS = 100;
+        let simulatedSnapshot = {
+            voltage: [300, 306, 298, 312],
+            current: [15, 16, 14, 17],
+            temperature: [45, 48, 47, 49]
+        };
+        let googleClientId = localStorage.getItem('googleClientId') || '';
+        let googleUser = null;
+
+        function applyGoogleClientId() {
+            const input = document.getElementById('googleClientId');
+            const cid = input.value.trim();
+            googleClientId = cid;
+
+            if (cid) {
+                localStorage.setItem('googleClientId', cid);
+            } else {
+                localStorage.removeItem('googleClientId');
+            }
+
+            initializeGoogleSignIn(true);
+        }
+
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function handleGoogleCredential(response) {
+            const payload = parseJwt(response.credential);
+            const email = payload?.email || 'google-user';
+            googleUser = { email, name: payload?.name || email };
+
+            const emailEl = document.getElementById('googleEmail');
+            emailEl.textContent = googleUser.name;
+            document.getElementById('userId').value = email;
+
+            updateGoogleUi(true);
+        }
+
+        function updateGoogleUi(authenticated) {
+            const profile = document.getElementById('googleProfile');
+            const signOutBtn = document.getElementById('googleSignOut');
+            const signInContainer = document.getElementById('googleSignInContainer');
+
+            profile.style.display = authenticated ? 'inline-flex' : 'none';
+            signOutBtn.style.display = authenticated ? 'inline-block' : 'none';
+
+            if (authenticated) {
+                signInContainer.style.display = 'none';
+                document.getElementById('firebaseStatus').textContent = 'Signed in with Google. Sessions will use your email.';
+            } else {
+                signInContainer.style.display = 'block';
+                document.getElementById('firebaseStatus').textContent = 'Session data will be uploaded to Firebase when configured.';
+            }
+        }
+
+        function googleSignOut() {
+            if (typeof google !== 'undefined' && google.accounts?.id && googleUser?.email) {
+                google.accounts.id.revoke(googleUser.email, () => {});
+            }
+            googleUser = null;
+            document.getElementById('userId').value = '';
+            updateGoogleUi(false);
+            initializeGoogleSignIn(true);
+        }
+
+        function initializeGoogleSignIn(forceRender = false) {
+            const signInContainer = document.getElementById('googleSignInContainer');
+
+            if (!googleClientId) {
+                signInContainer.innerHTML = '<span style="color:white; font-size:0.9rem;">Add a Google Client ID to enable sign-in.</span>';
+                return;
+            }
+
+            if (!window.google || !google.accounts || !google.accounts.id) {
+                signInContainer.innerHTML = '<span style="color:white; font-size:0.9rem;">Loading Google Sign-In...</span>';
+                return;
+            }
+
+            signInContainer.innerHTML = '';
+            google.accounts.id.initialize({
+                client_id: googleClientId,
+                callback: handleGoogleCredential,
+            });
+            google.accounts.id.renderButton(signInContainer, {
+                theme: 'outline',
+                size: 'medium',
+                type: 'standard',
+                shape: 'rectangular'
+            });
+
+            if (forceRender) {
+                google.accounts.id.prompt();
+            }
+        }
 
         // Render channel checkboxes
         function renderChannels() {
@@ -662,10 +839,25 @@
             const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            document.getElementById('sessionTime').textContent = 
+            document.getElementById('sessionTime').textContent =
                 `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            document.getElementById('sessionPoints').textContent = 
+            document.getElementById('sessionPoints').textContent =
                 `${sessionData.length} points`;
+        }
+
+        function generateSimulatedData() {
+            const jitter = (value, spread) => {
+                const delta = (Math.random() * spread * 2) - spread;
+                return Number((value + delta).toFixed(2));
+            };
+
+            simulatedSnapshot = {
+                voltage: simulatedSnapshot.voltage.map(v => jitter(v, 3.5)),
+                current: simulatedSnapshot.current.map(v => jitter(v, 0.6)),
+                temperature: simulatedSnapshot.temperature.map(v => jitter(v, 1.2))
+            };
+
+            return JSON.parse(JSON.stringify(simulatedSnapshot));
         }
 
         function startMonitoring() {
@@ -674,11 +866,10 @@
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
-            
+
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
-            document.getElementById('simBtn').disabled = true;
-            
+
             monitorInterval = setInterval(fetchSensorData, 2000);
             sessionInterval = setInterval(updateSessionInfo, 1000);
             fetchSensorData();
@@ -690,10 +881,9 @@
             monitoring = false;
             clearInterval(monitorInterval);
             clearInterval(sessionInterval);
-            
+
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('simBtn').disabled = false;
             document.getElementById('statusBar').textContent = 'Monitoring stopped';
         }
 
@@ -702,6 +892,7 @@
             const btn = document.getElementById('simBtn');
             btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
             btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
+            document.getElementById('statusBar').textContent = simulation ? 'Simulation mode enabled' : 'Live mode enabled';
         }
 
         function clearGraph() {
@@ -714,10 +905,9 @@
 
         async function fetchSensorData() {
             if (!monitoring) return;
-            
+
             try {
-                const response = await fetch('/sensor-data');
-                const data = await response.json();
+                const data = simulation ? generateSimulatedData() : await (await fetch('/sensor-data')).json();
                 
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
@@ -788,6 +978,45 @@
             if (chatHistory.length === 0) { alert('No chat history'); return; }
             const json = JSON.stringify({ exportTime: new Date().toISOString(), messages: chatHistory }, null, 2);
             download(json, `idaq_chat_${Date.now()}.json`, 'application/json');
+        }
+
+        async function saveSessionToFirebase() {
+            if (sessionData.length === 0) { alert('No session data to save'); return; }
+
+            const userId = document.getElementById('userId').value.trim() || 'anonymous';
+            const format = document.getElementById('sessionFormat').value;
+            const status = document.getElementById('firebaseStatus');
+
+            status.textContent = 'Saving session to Firebase...';
+
+            const payload = {
+                userId,
+                format,
+                mode: simulation ? 'simulation' : 'live',
+                session: {
+                    startTime: sessionStart ? new Date(sessionStart).toISOString() : null,
+                    endTime: new Date().toISOString(),
+                    points: sessionData.length
+                },
+                data: sessionData
+            };
+
+            try {
+                const response = await fetch('/save-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    status.textContent = data.message || 'Session saved to Firebase';
+                } else {
+                    status.textContent = data.error || 'Unable to save session';
+                }
+            } catch (error) {
+                status.textContent = 'Connection error while saving to Firebase';
+            }
         }
 
         function download(content, filename, type) {
@@ -915,6 +1144,8 @@
 
         // Initialize
         window.addEventListener('load', () => {
+            document.getElementById('googleClientId').value = googleClientId;
+            initializeGoogleSignIn(false);
             renderChannels();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
         });
