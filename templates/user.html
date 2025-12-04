@@ -18,7 +18,6 @@
             color: #2c3e50;
         }
         
-        /* Navigation */
         nav {
             background-color: #2c3e50;
             padding: 1rem 2rem;
@@ -73,9 +72,12 @@
         .auth-btn {
             padding: 0.5rem 0.85rem;
             font-weight: 600;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
         }
         
-        /* Main Layout */
         .main-container {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -92,7 +94,6 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         
-        /* Monitoring Panel */
         .panel-header {
             display: flex;
             justify-content: space-between;
@@ -120,7 +121,6 @@
             border-radius: 4px;
         }
         
-        /* Controls */
         .controls {
             display: flex;
             gap: 0.5rem;
@@ -179,7 +179,6 @@
             background-color: #56646f;
         }
         
-        /* Channel Selector */
         .channel-selector {
             margin-bottom: 1.5rem;
         }
@@ -199,7 +198,7 @@
         
         .channel-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 0.75rem;
             padding: 1rem 0;
         }
@@ -245,15 +244,74 @@
             margin-right: 0.25rem;
             flex-shrink: 0;
         }
+
+        .btn-set {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            background-color: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
         
-        /* Chart */
+        .btn-set:hover {
+            background-color: #1a91da;
+        }
+
+        .latest-values {
+            margin-bottom: 1.5rem;
+        }
+        
+        .latest-values h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            color: #2c3e50;
+        }
+        
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.5rem;
+        }
+        
+        .value-card {
+            background-color: #f5f7fa;
+            padding: 0.5rem;
+            border-radius: 6px;
+            border-left: 3px solid;
+        }
+        
+        .value-card.voltage { border-left-color: #ef5350; }
+        .value-card.current { border-left-color: #42a5f5; }
+        .value-card.temperature { border-left-color: #ffb300; }
+        
+        .value-card .label {
+            font-size: 0.7rem;
+            color: #657786;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+        
+        .value-card .value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .value-card .unit {
+            font-size: 0.75rem;
+            color: #657786;
+            margin-left: 0.25rem;
+        }
+        
         .chart-container {
             position: relative;
             height: 400px;
             margin-bottom: 1rem;
         }
         
-        /* Export Section */
         .export-section {
             display: flex;
             align-items: center;
@@ -268,7 +326,6 @@
             margin-right: 0.5rem;
         }
         
-        /* Status Bar */
         .status-bar {
             padding: 0.75rem;
             background-color: #f5f7fa;
@@ -278,7 +335,6 @@
             margin-top: 1rem;
         }
         
-        /* Chat Panel */
         .chat-header {
             display: flex;
             justify-content: space-between;
@@ -353,7 +409,6 @@
             transform: translateX(20px);
         }
         
-        /* Upload Section */
         .upload-section {
             display: none;
             background-color: #e8f5fa;
@@ -398,9 +453,8 @@
             color: #657786;
         }
         
-        /* Messages */
         #messages {
-            height: 450px;
+            height: 400px;
             overflow-y: auto;
             border: 1px solid #e1e8ed;
             border-radius: 6px;
@@ -455,9 +509,9 @@
         .message-content {
             font-size: 0.9375rem;
             line-height: 1.5;
+            white-space: pre-wrap;
         }
         
-        /* Input Group */
         .input-group {
             display: flex;
             gap: 0.5rem;
@@ -477,7 +531,6 @@
             border-color: #1da1f2;
         }
         
-        /* Responsive */
         @media (max-width: 1200px) {
             .main-container {
                 grid-template-columns: 1fr;
@@ -492,12 +545,10 @@
             <span id="userBadge" class="user-badge">Not signed in</span>
             <button id="authButton" class="btn btn-primary auth-btn" type="button">Sign in with Google</button>
             <a href="/admin">Admin</a>
-            <a href="/logout">Logout</a>
         </div>
     </nav>
 
     <div class="main-container">
-        <!-- Monitoring Panel -->
         <div class="panel">
             <div class="panel-header">
                 <h1>Real-Time Monitoring</h1>
@@ -515,9 +566,14 @@
             </div>
 
             <details class="channel-selector">
-                <summary>Channel Selection</summary>
+                <summary>Channel Selection & Labels</summary>
                 <div class="channel-grid" id="channelGrid"></div>
             </details>
+
+            <div class="latest-values">
+                <h3>Latest Readings</h3>
+                <div class="values-grid" id="latestValuesGrid"></div>
+            </div>
 
             <div class="chart-container">
                 <canvas id="sensorChart"></canvas>
@@ -533,7 +589,6 @@
             <div class="status-bar" id="statusBar">Ready to start monitoring</div>
         </div>
 
-        <!-- Chat Panel -->
         <div class="panel">
             <div class="chat-header">
                 <h2>AI Assistant</h2>
@@ -624,7 +679,6 @@
         let currentIdToken = localStorage.getItem('idaq_id_token');
         let sessionOwner = null;
 
-        // Channel definitions
         const channels = [
             { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
             { id: 'V2', type: 'voltage', index: 1, color: '#e53935', baseLabel: 'V2', customName: '' },
@@ -642,6 +696,12 @@
 
         const channelState = {};
         channels.forEach(ch => channelState[ch.id] = true);
+
+        let latestReadings = {
+            voltage: [0, 0, 0, 0],
+            current: [0, 0, 0, 0],
+            temperature: [0, 0, 0, 0]
+        };
 
         function updateUserBadge() {
             const badge = document.getElementById('userBadge');
@@ -696,7 +756,6 @@
             }
         }
 
-        // Chart setup
         const ctx = document.getElementById('sensorChart').getContext('2d');
         const datasets = channels.map(ch => ({
             label: ch.baseLabel,
@@ -717,13 +776,13 @@
                     legend: {
                         labels: {
                             filter: (item) => {
-                                const ch = channels.find(c => c.baseLabel === item.text);
+                                const ch = channels.find(c => c.baseLabel === item.text || item.text.startsWith(c.baseLabel));
                                 return ch && channelState[ch.id];
                             },
                             generateLabels: (chart) => {
                                 const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
                                 return original.map(label => {
-                                    const ch = channels.find(c => c.baseLabel === label.text);
+                                    const ch = channels.find(c => c.baseLabel === label.text || label.text.startsWith(c.baseLabel));
                                     if (ch && ch.customName.trim()) {
                                         label.text = `${ch.baseLabel} - ${ch.customName}`;
                                     }
@@ -736,7 +795,6 @@
             }
         });
 
-        // State
         let monitoring = false;
         let simulation = false;
         let monitorInterval = null;
@@ -758,7 +816,6 @@
             }
         });
 
-        // Render channel checkboxes
         function renderChannels() {
             const grid = document.getElementById('channelGrid');
             grid.innerHTML = '';
@@ -785,27 +842,62 @@
                 nameInput.className = 'channel-name-input';
                 nameInput.placeholder = 'Custom name...';
                 nameInput.value = ch.customName;
-                nameInput.oninput = (e) => updateChannelName(ch.id, e.target.value);
+                nameInput.id = `input-${ch.id}`;
+                
+                const setBtn = document.createElement('button');
+                setBtn.textContent = 'Set';
+                setBtn.className = 'btn-set';
+                setBtn.onclick = () => setChannelName(ch.id);
                 
                 div.appendChild(checkbox);
                 div.appendChild(legend);
                 div.appendChild(baseLabel);
                 div.appendChild(nameInput);
+                div.appendChild(setBtn);
                 grid.appendChild(div);
             });
+        }
+
+        function setChannelName(id) {
+            const input = document.getElementById(`input-${id}`);
+            const ch = channels.find(c => c.id === id);
+            if (ch) {
+                ch.customName = input.value;
+                chart.update();
+            }
         }
 
         function toggleChannel(id) {
             channelState[id] = !channelState[id];
             chart.update();
         }
-        
-        function updateChannelName(id, name) {
-            const ch = channels.find(c => c.id === id);
-            if (ch) {
-                ch.customName = name;
-                chart.update();
-            }
+
+        function renderLatestValues() {
+            const grid = document.getElementById('latestValuesGrid');
+            grid.innerHTML = '';
+            
+            channels.forEach(ch => {
+                const value = latestReadings[ch.type][ch.index];
+                const div = document.createElement('div');
+                div.className = `value-card ${ch.type}`;
+                
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = ch.customName || ch.baseLabel;
+                
+                const valueSpan = document.createElement('span');
+                valueSpan.className = 'value';
+                valueSpan.textContent = value.toFixed(1);
+                
+                const unit = document.createElement('span');
+                unit.className = 'unit';
+                unit.textContent = ch.type === 'voltage' ? 'V' : ch.type === 'current' ? 'A' : '°C';
+                
+                div.appendChild(label);
+                div.appendChild(valueSpan);
+                div.appendChild(unit);
+                grid.appendChild(div);
+            });
         }
 
         function updateSessionInfo() {
@@ -875,6 +967,14 @@
                 const response = await authFetch('/sensor-data');
                 const data = await response.json();
                 
+                latestReadings = {
+                    voltage: data.voltage,
+                    current: data.current,
+                    temperature: data.temperature
+                };
+                
+                renderLatestValues();
+                
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
                 
@@ -909,7 +1009,6 @@
             }
         }
 
-        // Export functions
         function exportToCSV() {
             if (sessionData.length === 0) { alert('No data'); return; }
             
@@ -958,7 +1057,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // Chat functions
         function toggleRagMode() {
             ragMode = document.getElementById('ragToggle').checked;
             const uploadSection = document.getElementById('uploadSection');
@@ -967,11 +1065,11 @@
             if (ragMode) {
                 uploadSection.classList.add('active');
                 input.placeholder = 'Ask about datasheets...';
-                addMessage('RAG mode enabled', false, true);
+                addMessage('RAG mode enabled. Upload a PDF to get started.', false, true);
             } else {
                 uploadSection.classList.remove('active');
                 input.placeholder = 'Ask a question...';
-                addMessage('Chat mode enabled', false, false);
+                addMessage('Chat mode enabled.', false, false);
             }
         }
 
@@ -1001,7 +1099,7 @@
                     document.getElementById('uploadStatus').textContent = `Error: ${data.error}`;
                 }
             } catch (error) {
-                document.getElementById('uploadStatus').textContent = 'Upload failed';
+                document.getElementById('uploadStatus').textContent = 'Upload failed: ' + error.message;
             }
         }
 
@@ -1054,12 +1152,16 @@
             try {
                 const endpoint = ragMode ? '/ask-rag' : '/chat';
                 const key = ragMode ? 'question' : 'message';
-                const context = sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null;
+                const payload = {
+                    [key]: msg,
+                    context: sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null,
+                    latestReadings: latestReadings
+                };
                 
                 const response = await authFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ [key]: msg, context })
+                    body: JSON.stringify(payload)
                 });
                 
                 const data = await response.json();
@@ -1068,12 +1170,12 @@
                     addMessage(data.response, false, ragMode);
                     status.textContent = 'Ready';
                 } else {
-                    addMessage(`Error: ${data.response}`, false, ragMode);
+                    addMessage(`Error: ${data.response || data.error}`, false, ragMode);
                     status.textContent = 'Error';
                 }
             } catch (error) {
                 addMessage('Connection or authentication error. Is Ollama running?', false, ragMode);
-                status.textContent = 'Error';
+                status.textContent = 'Error: ' + error.message;
             } finally {
                 sendBtn.disabled = false;
             }
@@ -1083,9 +1185,9 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Initialize
         window.addEventListener('load', () => {
             renderChannels();
+            renderLatestValues();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
             document.getElementById('authButton').addEventListener('click', handleAuthClick);
             updateUserBadge();

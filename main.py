@@ -1,37 +1,11 @@
 """
-Main FastAPI server for iDAQ local diagnostics and training.
-
-This server exposes a simple web interface for both administrators and
-end users. Administrators (authenticated via static credentials) can
-upload normal and fault datasets, trigger training of the fault
-classifier and anomaly baseline, and view their status.  End users can
-view live sensor readings plotted on a chart and interact with a
-diagnostic chatbot powered by a locally running Ollama language model.
-
-Endpoints:
-
-* ``GET /`` – Redirects to login or appropriate dashboard based on cookie.
-* ``GET /login`` – Render the login form.
-* ``POST /login`` – Authenticate and set an admin cookie.
-* ``GET /logout`` – Clear admin cookie and redirect to login.
-* ``GET /admin`` – Upload and training interface for admins.
-* ``POST /upload-normal`` – Upload a CSV of normal operation data.
-* ``POST /upload-fault`` – Upload a CSV of fault data.
-* ``POST /upload-pdf`` – Upload a datasheet PDF and ingest it for RAG.
-* ``POST /train`` – Train the classifier and baseline using uploaded data.
-* ``GET /user`` – User dashboard with live graph and chat.
-* ``GET /sensor-data`` – Return current sensor values as JSON.
-* ``POST /chat`` – Send a message to the local LLM and return its response.
-* ``POST /ask-rag`` – Send a question through the RAG pipeline.
-
-Note that this example uses a very simple cookie mechanism to manage
-admin sessions. In a production system you would use a more robust
-authentication framework.
+Complete FastAPI server for iDAQ diagnostics with Firebase authentication.
 """
 
 import os
 import json
 import random
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -42,7 +16,6 @@ from firebase_admin import auth as firebase_auth, credentials
 import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from local_llama_agent import (
@@ -50,11 +23,20 @@ from local_llama_agent import (
     OllamaNotRunningError,
 )
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Base directory for data and templates
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
+DATASHEETS_DIR = BASE_DIR / "datasheets"
 
 load_dotenv()
+
+# Ensure directories exist
+DATASHEETS_DIR.mkdir(parents=True, exist_ok=True)
+TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Firebase configuration
 REQUIRED_FIREBASE_CONFIG_KEYS = [
@@ -68,13 +50,13 @@ REQUIRED_FIREBASE_CONFIG_KEYS = [
 
 firebase_app: Optional[firebase_admin.App] = None
 
-# Instantiate the diagnostics agent (lazy loads knowledge base and LLM)
+# Instantiate the diagnostics agent
 agent = LocalDiagnosticsAgent()
 
 # Create the FastAPI app
 app = FastAPI(title="iDAQ Diagnostics Server")
 
-# Add CORS middleware to allow frontend requests
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # In production, specify exact origins
@@ -83,19 +65,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure templates directory exists
-if not TEMPLATES_DIR.exists():
-    TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-
 
 # ---------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------
 
-
 def read_template(name: str) -> str:
     """Read an HTML template from the templates directory."""
     path = TEMPLATES_DIR / name
+    if not path.exists():
+        logger.error(f"Template {name} not found at {path}")
+        return f"<html><body><h1>Template {name} not found</h1></body></html>"
     return path.read_text(encoding="utf-8")
 
 
@@ -109,13 +89,7 @@ def redirect_to_login() -> RedirectResponse:
 
 
 def _load_service_account_credentials() -> credentials.Base:
-    """Load Firebase service account credentials from environment variables.
-
-    Supports either a JSON string in ``FIREBASE_SERVICE_ACCOUNT`` or a path
-    specified via ``FIREBASE_SERVICE_ACCOUNT_FILE``. If neither is supplied,
-    application default credentials are used.
-    """
-
+    """Load Firebase service account credentials from environment variables."""
     key_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_FILE")
     key_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
     project_id = os.environ.get("FIREBASE_PROJECT_ID")
@@ -137,7 +111,6 @@ def _load_service_account_credentials() -> credentials.Base:
 
 def init_firebase_admin():
     """Initialize the Firebase Admin SDK if it has not been initialized."""
-
     global firebase_app
     if firebase_admin._apps:
         firebase_app = firebase_admin.get_app()
@@ -150,7 +123,6 @@ def init_firebase_admin():
 
 def get_firebase_client_config() -> dict:
     """Assemble Firebase client configuration from environment variables."""
-
     config = {
         "apiKey": os.environ.get("FIREBASE_API_KEY"),
         "authDomain": os.environ.get("FIREBASE_AUTH_DOMAIN"),
@@ -175,7 +147,6 @@ def get_firebase_client_config() -> dict:
 
 async def verify_firebase_token(authorization: str = Header(None)) -> dict:
     """Verify a Firebase ID token from the Authorization header."""
-
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Authorization header")
 
@@ -184,36 +155,39 @@ async def verify_firebase_token(authorization: str = Header(None)) -> dict:
     try:
         decoded = firebase_auth.verify_id_token(token)
         return decoded
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=401, detail=f"Invalid ID token: {exc}")
 
 
 # ---------------------------------------------------------------------
-# Startup event to check Ollama status
+# Startup event
 # ---------------------------------------------------------------------
 
 @app.on_event("startup")
 async def startup_event():
-    """Check if Ollama is running and model is available on startup."""
-    print("=" * 60)
-    print("iDAQ Diagnostics Server Starting Up")
-    print("=" * 60)
+    """Check if Ollama is running and Firebase is configured on startup."""
+    logger.info("=" * 60)
+    logger.info("iDAQ Diagnostics Server Starting Up")
+    logger.info("=" * 60)
+    
     try:
         init_firebase_admin()
-        print("Firebase Admin SDK initialized")
-    except Exception as exc:  # noqa: BLE001
-        print(f"⚠️ WARNING: Firebase Admin initialization failed: {exc}")
+        logger.info("✅ Firebase Admin SDK initialized")
+    except Exception as exc:
+        logger.warning(f"⚠️ WARNING: Firebase Admin initialization failed: {exc}")
+        logger.warning("Firebase features will be disabled")
     
     try:
         status = agent.ollama.ensure_model_available()
-        print(status)
+        logger.info(status)
     except Exception as e:
-        print(f"⚠️ WARNING: {e}")
-        print("Make sure to:")
-        print("  1. Install Ollama: https://ollama.com")
-        print("  2. Start Ollama service: 'ollama serve'")
-        print("  3. Pull the model: 'ollama pull llama3.2:1b'")
-    print("=" * 60)
+        logger.warning(f"⚠️ WARNING: {e}")
+        logger.warning("Make sure to:")
+        logger.warning("  1. Install Ollama: https://ollama.com")
+        logger.warning("  2. Start Ollama service: 'ollama serve'")
+        logger.warning("  3. Pull the model: 'ollama pull llama3.2:1b'")
+    
+    logger.info("=" * 60)
 
 
 # ---------------------------------------------------------------------
@@ -225,7 +199,6 @@ async def index(request: Request):
     """Root path; redirect users to appropriate dashboard."""
     if is_admin(request):
         return RedirectResponse(url="/admin", status_code=303)
-    # If not admin and not authenticated, show user dashboard
     return RedirectResponse(url="/user", status_code=303)
 
 
@@ -238,14 +211,11 @@ async def login_form():
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Authenticate user and set an admin cookie if credentials match."""
-    # Replace these with secure credential storage in real usage
     if username == "pqlab" and password == "PQ2025!":
         response = RedirectResponse(url="/admin", status_code=303)
-        # Set admin cookie; expires when browser session ends
         response.set_cookie(key="admin", value="1", httponly=True)
         return response
     else:
-        # If authentication fails, redirect to user dashboard (no admin)
         return RedirectResponse(url="/user", status_code=303)
 
 
@@ -260,7 +230,6 @@ async def logout():
 @app.get("/config/firebase")
 async def firebase_config():
     """Expose Firebase client configuration to the frontend."""
-
     try:
         return get_firebase_client_config()
     except RuntimeError as exc:
@@ -281,93 +250,126 @@ async def admin_page(request: Request):
 
 @app.post("/upload-normal")
 async def upload_normal(request: Request, file: UploadFile = File(...)):
-    """
-    Upload a CSV file containing normal operation data.  Saves the file
-    as ``normal.csv`` in the app directory so that it can be used for
-    anomaly baseline training.
-    """
+    """Upload a CSV file containing normal operation data."""
     if not is_admin(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=403)
-    contents = await file.read()
-    data_path = BASE_DIR / "normal.csv"
-    with open(data_path, "wb") as f:
-        f.write(contents)
-    return {"message": "Normal dataset uploaded."}
-
-
-@app.post("/upload-pdf")
-async def upload_pdf(
-    request: Request,
-    file: UploadFile = File(...),
-    user: dict = Depends(verify_firebase_token),
-):
-    """
-    Upload a datasheet PDF for retrieval‑augmented generation.  The PDF
-    will be saved to a ``datasheets`` directory and ingested into the
-    vector store via the diagnostics agent.  Only admins can perform
-    this action.
-    """
-    if not is_admin(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=403)
-    contents = await file.read()
-    datasheets_dir = BASE_DIR / "datasheets"
-    datasheets_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = datasheets_dir / file.filename
-    with open(pdf_path, "wb") as f:
-        f.write(contents)
+    
     try:
-        msg = agent.ingest_pdf(pdf_path)
-        return {"message": msg}
-    except Exception as exc:
-        return JSONResponse({"error": f"Error ingesting PDF: {exc}"}, status_code=500)
+        contents = await file.read()
+        data_path = BASE_DIR / "normal.csv"
+        with open(data_path, "wb") as f:
+            f.write(contents)
+        logger.info(f"Normal dataset uploaded: {len(contents)} bytes")
+        return {"message": "Normal dataset uploaded successfully."}
+    except Exception as e:
+        logger.error(f"Error uploading normal dataset: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/upload-fault")
 async def upload_fault(request: Request, file: UploadFile = File(...)):
-    """
-    Upload a CSV file containing fault data.  Saves the file as
-    ``fault.csv`` in the app directory so that it can be used for
-    classifier training.
-    """
+    """Upload a CSV file containing fault data."""
     if not is_admin(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=403)
-    contents = await file.read()
-    data_path = BASE_DIR / "fault.csv"
-    with open(data_path, "wb") as f:
-        f.write(contents)
-    return {"message": "Fault dataset uploaded."}
+    
+    try:
+        contents = await file.read()
+        data_path = BASE_DIR / "fault.csv"
+        with open(data_path, "wb") as f:
+            f.write(contents)
+        logger.info(f"Fault dataset uploaded: {len(contents)} bytes")
+        return {"message": "Fault dataset uploaded successfully."}
+    except Exception as e:
+        logger.error(f"Error uploading fault dataset: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/upload-pdf")
+async def upload_pdf(
+    file: UploadFile = File(...),
+    user: dict = Depends(verify_firebase_token),
+):
+    """Upload a datasheet PDF for RAG. Requires authentication."""
+    try:
+        if not file.filename.endswith('.pdf'):
+            logger.warning(f"Invalid file type attempted: {file.filename}")
+            return JSONResponse(
+                {"error": "Only PDF files are allowed"}, 
+                status_code=400
+            )
+        
+        contents = await file.read()
+        
+        if len(contents) == 0:
+            logger.error("Empty file uploaded")
+            return JSONResponse(
+                {"error": "Uploaded file is empty"}, 
+                status_code=400
+            )
+        
+        pdf_path = DATASHEETS_DIR / file.filename
+        with open(pdf_path, "wb") as f:
+            f.write(contents)
+        
+        requester = user.get("email") or user.get("uid")
+        logger.info(f"PDF saved by {requester}: {pdf_path} ({len(contents)} bytes)")
+        
+        try:
+            msg = agent.ingest_pdf(pdf_path)
+            logger.info(f"PDF ingested successfully: {msg}")
+            return {"message": msg}
+        except Exception as exc:
+            error_msg = f"Error ingesting PDF: {str(exc)}"
+            logger.error(error_msg)
+            return JSONResponse(
+                {"error": error_msg}, 
+                status_code=500
+            )
+            
+    except Exception as exc:
+        error_msg = f"Error uploading PDF: {str(exc)}"
+        logger.error(error_msg)
+        return JSONResponse(
+            {"error": error_msg}, 
+            status_code=500
+        )
 
 
 @app.post("/train")
 async def train_models(request: Request):
-    """
-    Trigger training of the fault classifier and anomaly detection baseline.
-    Requires both ``fault.csv`` and ``normal.csv`` to exist.  Returns
-    status messages detailing what was trained successfully.
-    """
+    """Train fault classifier and anomaly detection baseline."""
     if not is_admin(request):
         return JSONResponse({"error": "Unauthorized"}, status_code=403)
+    
     messages = []
     fault_path = BASE_DIR / "fault.csv"
     normal_path = BASE_DIR / "normal.csv"
+    
     if not fault_path.exists():
         messages.append("⚠️ fault.csv not found. Upload a fault dataset first.")
     else:
         try:
             msg = agent.train_fault_classifier(fault_path)
             messages.append(msg)
+            logger.info(f"Classifier trained: {msg}")
         except Exception as exc:
-            messages.append(f"⚠️ Error training classifier: {exc}")
+            error_msg = f"⚠️ Error training classifier: {exc}"
+            messages.append(error_msg)
+            logger.error(error_msg)
+    
     if not normal_path.exists():
         messages.append("⚠️ normal.csv not found. Upload a normal dataset first.")
     else:
         try:
             stats = agent.fit_anomaly_baseline(normal_path)
-            messages.append(
-                f"✅ Fitted anomaly baseline on {normal_path.name} with {len(stats)} features."
-            )
+            msg = f"✅ Fitted anomaly baseline on {normal_path.name} with {len(stats)} features."
+            messages.append(msg)
+            logger.info(msg)
         except Exception as exc:
-            messages.append(f"⚠️ Error fitting anomaly baseline: {exc}")
+            error_msg = f"⚠️ Error fitting anomaly baseline: {exc}"
+            messages.append(error_msg)
+            logger.error(error_msg)
+    
     return {"messages": messages}
 
 
@@ -382,78 +384,120 @@ async def user_page():
 
 
 def _generate_channels(base: float, spread: float, count: int = 4) -> list[float]:
+    """Generate random sensor values around a base value."""
     return [round(random.uniform(base - spread, base + spread), 2) for _ in range(count)]
 
 
 @app.get("/sensor-data")
 async def sensor_data(user: dict = Depends(verify_firebase_token)) -> dict:
-    """
-    Return simulated sensor data across four voltage, current and temperature channels.
-    In a real deployment this would interface with the Jetson GPIO/ADC hardware.
-    """
-    return {
+    """Return simulated sensor data. Requires authentication."""
+    data = {
         "voltage": _generate_channels(300.0, 15.0),
         "current": _generate_channels(15.0, 4.0),
         "temperature": _generate_channels(45.0, 20.0),
     }
+    logger.debug(f"Sensor data requested by {user.get('email') or user.get('uid')}")
+    return data
 
 
 @app.post("/chat")
 async def chat_endpoint(request: Request, user: dict = Depends(verify_firebase_token)):
-    """
-    Accept a user message and return a response from the local LLM.  If
-    the Ollama server is unreachable, returns an error message.
-    """
+    """Chat with the local LLM. Requires authentication."""
     try:
         data = await request.json()
         message: Optional[str] = data.get("message")
         sensor_context = data.get("context")
+        latest_readings = data.get("latestReadings")
+        
         if not message:
-            return JSONResponse({"response": "Please provide a message."}, status_code=400)
+            return JSONResponse(
+                {"response": "Please provide a message."}, 
+                status_code=400
+            )
 
         requester = user.get("email") or user.get("uid")
-        print(f"Received chat message from {requester}: {message}")
+        logger.info(f"Chat message from {requester}: {message[:50]}...")
+        
+        # Build enhanced context
+        context_parts = []
+        if latest_readings:
+            context_parts.append("\n[Current Sensor Readings]")
+            for sensor_type, values in latest_readings.items():
+                context_parts.append(f"{sensor_type.capitalize()}: {values}")
+        
         if sensor_context:
-            context_block = json.dumps(sensor_context, indent=2)
-            message = f"{message}\n\n[Latest simulated sensor context]\n{context_block}"
-        response_text = agent.ollama.generate(message)
-        print(f"LLM response: {response_text[:100]}...")
+            context_parts.append("\n[Recent Data Points]")
+            context_parts.append(json.dumps(sensor_context, indent=2))
+        
+        if context_parts:
+            enhanced_message = f"{message}\n{''.join(context_parts)}"
+        else:
+            enhanced_message = message
+        
+        response_text = agent.ollama.generate(enhanced_message)
+        logger.info(f"LLM response generated ({len(response_text)} chars)")
         return {"response": response_text}
+        
     except OllamaNotRunningError as exc:
-        error_msg = f"Ollama server is not running. Please start it with 'ollama serve'. Error: {str(exc)}"
-        print(error_msg)
+        error_msg = f"Ollama server is not running. Please start it with 'ollama serve'."
+        logger.error(error_msg)
         return JSONResponse({"response": error_msg}, status_code=503)
     except Exception as exc:
-        error_msg = f"Unexpected error in chat: {str(exc)}"
-        print(error_msg)
+        error_msg = f"Chat error: {str(exc)}"
+        logger.error(error_msg)
         return JSONResponse({"response": error_msg}, status_code=500)
 
 
 @app.post("/ask-rag")
 async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token)):
-    """
-    Accept a question and return a response from the RAG pipeline.  The
-    agent will retrieve relevant context from ingested datasheets and
-    then query the local LLM to generate a grounded answer.
-    """
+    """Query the RAG system. Requires authentication."""
     try:
         data = await request.json()
         question: Optional[str] = data.get("question") or data.get("message")
+        
         if not question:
-            return JSONResponse({"response": "Please provide a question."}, status_code=400)
+            return JSONResponse(
+                {"response": "Please provide a question."}, 
+                status_code=400
+            )
         
         requester = user.get("email") or user.get("uid")
-        print(f"Received RAG question from {requester}: {question}")
+        logger.info(f"RAG question from {requester}: {question[:50]}...")
+        
         answer = agent.query_rag(question)
-        print(f"RAG response: {answer[:100]}...")
+        logger.info(f"RAG response generated ({len(answer)} chars)")
         return {"response": answer}
+        
     except Exception as exc:
-        error_msg = f"Error in RAG query: {str(exc)}"
-        print(error_msg)
-        return JSONResponse({"response": error_msg}, status_code=500)
+        error_msg = f"RAG error: {str(exc)}"
+        logger.error(error_msg, exc_info=True)
+        return JSONResponse(
+            {"response": error_msg}, 
+            status_code=500
+        )
 
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
     """Handle 404 errors with a simple message."""
     return JSONResponse({"detail": "Not found"}, status_code=404)
+
+
+@app.exception_handler(500)
+async def internal_error(request: Request, exc):
+    """Handle 500 errors."""
+    logger.error(f"Internal server error: {exc}", exc_info=True)
+    return JSONResponse(
+        {"detail": "Internal server error"}, 
+        status_code=500
+    )
+
+
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint."""
+    return {
+        "status": "ok",
+        "ollama": "connected" if agent.ollama else "disconnected",
+        "firebase": "configured" if firebase_app else "not configured"
+    }
