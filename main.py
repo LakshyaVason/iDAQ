@@ -49,6 +49,7 @@ REQUIRED_FIREBASE_CONFIG_KEYS = [
 ]
 
 firebase_app: Optional[firebase_admin.App] = None
+firebase_available: bool = False
 
 # Instantiate the diagnostics agent
 agent = LocalDiagnosticsAgent()
@@ -111,13 +112,15 @@ def _load_service_account_credentials() -> credentials.Base:
 
 def init_firebase_admin():
     """Initialize the Firebase Admin SDK if it has not been initialized."""
-    global firebase_app
+    global firebase_app, firebase_available
     if firebase_admin._apps:
         firebase_app = firebase_admin.get_app()
+        firebase_available = True
         return firebase_app
 
     cred = _load_service_account_credentials()
     firebase_app = firebase_admin.initialize_app(cred)
+    firebase_available = True
     return firebase_app
 
 
@@ -147,16 +150,24 @@ def get_firebase_client_config() -> dict:
 
 async def verify_firebase_token(authorization: str = Header(None)) -> dict:
     """Verify a Firebase ID token from the Authorization header."""
+    if not firebase_available:
+        return {"uid": "guest", "email": None, "name": "Guest"}
+
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Authorization header")
 
     token = authorization.split(" ", 1)[1]
-    init_firebase_admin()
+    try:
+        init_firebase_admin()
+    except Exception:
+        logger.warning("Firebase not configured; allowing anonymous access to diagnostics endpoints.")
+        return {"uid": "guest", "email": None, "name": "Guest"}
     try:
         decoded = firebase_auth.verify_id_token(token)
         return decoded
     except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid ID token: {exc}")
+        logger.warning(f"Firebase token verification failed ({exc}); allowing anonymous access.")
+        return {"uid": "guest", "email": None, "name": "Guest"}
 
 
 # ---------------------------------------------------------------------
@@ -176,6 +187,7 @@ async def startup_event():
     except Exception as exc:
         logger.warning(f"⚠️ WARNING: Firebase Admin initialization failed: {exc}")
         logger.warning("Firebase features will be disabled")
+        globals()["firebase_available"] = False
     
     try:
         status = agent.ollama.ensure_model_available()
