@@ -1022,9 +1022,13 @@
                 
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
+                const timestampLocal = timestamp.toLocaleString([], {
+                    hour12: false,
+                    timeZoneName: 'short'
+                });
                 
                 sessionData.push({
-                    timestamp: timestamp.toISOString(),
+                    timestamp: timestampLocal,
                     time: timeStr,
                     voltage: data.voltage,
                     current: data.current,
