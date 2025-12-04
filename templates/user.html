@@ -665,6 +665,10 @@
                 };
             } catch (error) {
                 console.error('Firebase initialization failed', error);
+                firebaseEnabled = false;
+                currentIdToken = null;
+                updateUserBadge();
+                document.getElementById('chatStatus').textContent = 'Chat available without signing in';
                 document.dispatchEvent(new CustomEvent('auth-changed', {
                     detail: { user: null, idToken: null }
                 }));
@@ -678,6 +682,7 @@
         let currentUser = null;
         let currentIdToken = localStorage.getItem('idaq_id_token');
         let sessionOwner = null;
+        let firebaseEnabled = true;
 
         const channels = [
             { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
@@ -707,6 +712,16 @@
             const badge = document.getElementById('userBadge');
             const authButton = document.getElementById('authButton');
 
+            if (!firebaseEnabled) {
+                badge.textContent = 'Auth disabled';
+                badge.style.opacity = '0.85';
+                authButton.textContent = 'Sign-in unavailable';
+                authButton.className = 'btn btn-secondary auth-btn';
+                authButton.disabled = true;
+                sessionOwner = { uid: 'guest', email: null, name: 'Guest' };
+                return;
+            }
+
             if (currentUser) {
                 const name = currentUser.displayName || currentUser.email || currentUser.uid;
                 badge.innerHTML = `Signed in as <strong>${name}</strong>`;
@@ -728,6 +743,10 @@
         }
 
         function ensureAuthenticated(showAlert = true) {
+            if (!firebaseEnabled) {
+                return true;
+            }
+
             if (!currentIdToken) {
                 if (showAlert) {
                     alert('Please sign in with Google to continue.');
@@ -743,7 +762,9 @@
             }
 
             const headers = new Headers(options.headers || {});
-            headers.set('Authorization', `Bearer ${currentIdToken}`);
+            if (firebaseEnabled && currentIdToken) {
+                headers.set('Authorization', `Bearer ${currentIdToken}`);
+            }
 
             return fetch(url, { ...options, headers });
         }
@@ -914,7 +935,7 @@
         function startMonitoring() {
             if (monitoring) return;
 
-            if (!ensureAuthenticated()) {
+            if (!simulation && !ensureAuthenticated()) {
                 document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
                 return;
             }
@@ -950,6 +971,12 @@
             const btn = document.getElementById('simBtn');
             btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
             btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
+
+            if (simulation) {
+                document.getElementById('statusBar').textContent = 'Simulation armed — press Start to generate virtual data';
+            } else {
+                document.getElementById('statusBar').textContent = 'Simulation disabled — live monitoring requires sign in';
+            }
         }
 
         function clearGraph() {
@@ -960,13 +987,31 @@
             }
         }
 
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function generateSimulatedReadings() {
+            const makeSeries = (base, spread) => Array.from(
+                { length: 4 },
+                () => parseFloat(randomInRange(base - spread, base + spread).toFixed(2))
+            );
+
+            return {
+                voltage: makeSeries(300, 15),
+                current: makeSeries(15, 4),
+                temperature: makeSeries(45, 20)
+            };
+        }
+
         async function fetchSensorData() {
             if (!monitoring) return;
-            
+
             try {
-                const response = await authFetch('/sensor-data');
-                const data = await response.json();
-                
+                const data = simulation
+                    ? generateSimulatedReadings()
+                    : await authFetch('/sensor-data').then(resp => resp.json());
+
                 latestReadings = {
                     voltage: data.voltage,
                     current: data.current,
@@ -977,9 +1022,13 @@
                 
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
+                const timestampLocal = timestamp.toLocaleString([], {
+                    hour12: false,
+                    timeZoneName: 'short'
+                });
                 
                 sessionData.push({
-                    timestamp: timestamp.toISOString(),
+                    timestamp: timestampLocal,
                     time: timeStr,
                     voltage: data.voltage,
                     current: data.current,
@@ -1000,7 +1049,7 @@
                 chart.update();
                 
                 const mode = simulation ? 'SIM' : 'LIVE';
-                document.getElementById('statusBar').textContent = 
+                document.getElementById('statusBar').textContent =
                     `${mode} | ${timeStr} | V1: ${data.voltage[0]}V C1: ${data.current[0]}A T1: ${data.temperature[0]}°C`;
             } catch (error) {
                 console.error('Sensor data error:', error);
@@ -1170,7 +1219,8 @@
                     addMessage(data.response, false, ragMode);
                     status.textContent = 'Ready';
                 } else {
-                    addMessage(`Error: ${data.response || data.error}`, false, ragMode);
+                    const errorText = data.response || data.error || data.detail || 'Unknown error';
+                    addMessage(`Error: ${errorText}`, false, ragMode);
                     status.textContent = 'Error';
                 }
             } catch (error) {
