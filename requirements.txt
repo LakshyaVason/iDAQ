@@ -17,6 +17,9 @@ requests
 jinja2
 python-multipart  # Needed for FastAPI file uploads
 
+# Firebase integration
+firebase-admin
+
 # LangChain ecosystem and serving
 langchain
 langchain-community
