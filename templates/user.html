@@ -267,6 +267,43 @@
             height: 400px;
             margin-bottom: 1rem;
         }
+
+        .latest-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .latest-card {
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            background: #f9fbfd;
+            padding: 1rem;
+        }
+
+        .latest-card h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .latest-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .latest-table th,
+        .latest-table td {
+            padding: 0.35rem 0.25rem;
+            text-align: left;
+            border-bottom: 1px solid #e1e8ed;
+        }
+
+        .latest-table th {
+            color: #657786;
+            font-weight: 600;
+        }
         
         /* Export Section */
         .export-section {
@@ -556,6 +593,24 @@
                 <canvas id="sensorChart"></canvas>
             </div>
 
+            <div class="latest-section" id="latestCards">
+                <div class="latest-card">
+                    <h3>Latest Readings</h3>
+                    <table class="latest-table">
+                        <thead>
+                            <tr>
+                                <th>Channel</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="latestTableBody">
+                            <tr><td colspan="2">No data yet</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="status-bar" id="latestTimestamp">Waiting for data...</div>
+                </div>
+            </div>
+
             <div class="export-section">
                 <label>Export:</label>
                 <button class="btn btn-primary" onclick="exportToCSV()">CSV</button>
@@ -611,6 +666,10 @@
     </div>
 
     <script>
+        // Google Identity state
+        let googleClientId = localStorage.getItem('googleClientId') || '';
+        let googleProfile = null;
+
         // Channel definitions
         const channels = [
             { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
@@ -677,6 +736,7 @@
         let sessionStart = null;
         let sessionInterval = null;
         let sessionData = [];
+        let sessionLookup = {};
         let chatHistory = [];
         let ragMode = false;
         const MAX_POINTS = 100;
@@ -685,6 +745,77 @@
             current: [15, 16, 14, 17],
             temperature: [45, 48, 47, 49]
         };
+
+        // Google Sign-In helpers
+        function updateGoogleProfileDisplay() {
+            const profileEl = document.getElementById('googleProfile');
+            const emailEl = document.getElementById('googleEmail');
+            const signOutBtn = document.getElementById('googleSignOut');
+
+            if (googleProfile) {
+                profileEl.style.display = 'inline-flex';
+                emailEl.textContent = googleProfile.email;
+                signOutBtn.style.display = 'inline-block';
+            } else {
+                profileEl.style.display = 'none';
+                signOutBtn.style.display = 'none';
+            }
+        }
+
+        function handleGoogleCredential(response) {
+            try {
+                const payload = JSON.parse(atob(response.credential.split('.')[1]));
+                googleProfile = { email: payload.email, name: payload.name };
+                updateGoogleProfileDisplay();
+                document.getElementById('firebaseStatus').textContent = `Signed in as ${payload.email}`;
+            } catch (error) {
+                console.warn('Unable to parse Google token', error);
+            }
+        }
+
+        function renderGoogleButton() {
+            const container = document.getElementById('googleSignInContainer');
+            container.innerHTML = '';
+
+            if (!googleClientId) {
+                const hint = document.createElement('div');
+                hint.textContent = 'Enter your Google Client ID to enable sign-in.';
+                hint.style.color = '#fff';
+                hint.style.opacity = '0.85';
+                container.appendChild(hint);
+                return;
+            }
+
+            if (window.google?.accounts?.id) {
+                google.accounts.id.initialize({
+                    client_id: googleClientId,
+                    callback: handleGoogleCredential,
+                });
+                google.accounts.id.renderButton(container, { theme: 'outline', size: 'medium' });
+            }
+        }
+
+        function applyGoogleClientId() {
+            const input = document.getElementById('googleClientId');
+            googleClientId = input.value.trim();
+            localStorage.setItem('googleClientId', googleClientId);
+            renderGoogleButton();
+        }
+
+        function initializeGoogleSignIn(prompt = true) {
+            renderGoogleButton();
+            if (prompt && window.google?.accounts?.id && googleClientId) {
+                google.accounts.id.prompt();
+            }
+        }
+
+        function googleSignOut() {
+            if (window.google?.accounts?.id) {
+                google.accounts.id.revoke(googleProfile?.email || '', () => {});
+            }
+            googleProfile = null;
+            updateGoogleProfileDisplay();
+        }
 
         // Render channel checkboxes
         function renderChannels() {
@@ -762,12 +893,43 @@
             return JSON.parse(JSON.stringify(simulatedSnapshot));
         }
 
+        function updateLatestTable(snapshot, timeStr) {
+            const tbody = document.getElementById('latestTableBody');
+            tbody.innerHTML = '';
+
+            const rows = [];
+            ['voltage', 'current', 'temperature'].forEach(type => {
+                snapshot[type].forEach((value, idx) => {
+                    const channelId = channels.find(c => c.type === type && c.index === idx)?.id || `${type}${idx + 1}`;
+                    const label = channels.find(c => c.id === channelId);
+                    const friendly = label?.customName?.trim()
+                        ? `${channelId} - ${label.customName}`
+                        : channelId;
+                    rows.push({ channel: friendly, value });
+                });
+            });
+
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                const chTd = document.createElement('td');
+                chTd.textContent = row.channel;
+                const valTd = document.createElement('td');
+                valTd.textContent = row.value;
+                tr.appendChild(chTd);
+                tr.appendChild(valTd);
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('latestTimestamp').textContent = `Last update: ${timeStr}`;
+        }
+
         function startMonitoring() {
             if (monitoring) return;
             
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
+            sessionLookup = {};
 
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
@@ -821,7 +983,12 @@
                     current: data.current,
                     temperature: data.temperature
                 });
-                
+                sessionLookup[timeStr] = {
+                    voltage: data.voltage,
+                    current: data.current,
+                    temperature: data.temperature,
+                };
+
                 chart.data.labels.push(timeStr);
                 channels.forEach((ch, idx) => {
                     const value = data[ch.type]?.[ch.index] ?? null;
@@ -834,9 +1001,10 @@
                 }
 
                 chart.update();
-                
+                updateLatestTable(data, timeStr);
+
                 const mode = simulation ? 'SIM' : 'LIVE';
-                document.getElementById('statusBar').textContent = 
+                document.getElementById('statusBar').textContent =
                     `${mode} | ${timeStr} | V1: ${data.voltage[0]}V C1: ${data.current[0]}A T1: ${data.temperature[0]}°C`;
             } catch (error) {
                 console.error('Sensor data error:', error);
@@ -999,6 +1167,26 @@
             });
         }
 
+        function buildChatContext() {
+            if (sessionData.length === 0) return null;
+
+            const latest = sessionData[sessionData.length - 1];
+            const searchableLog = sessionData.slice(-200).map(entry => ({
+                time: entry.time,
+                timestamp: entry.timestamp,
+                voltage: entry.voltage,
+                current: entry.current,
+                temperature: entry.temperature,
+            }));
+
+            return {
+                latest,
+                searchableLog,
+                lookupByTime: sessionLookup,
+                note: 'Use exact time matches in searchableLog to answer timestamp questions.',
+            };
+        }
+
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const msg = input.value.trim();
@@ -1011,12 +1199,12 @@
             const status = document.getElementById('chatStatus');
             sendBtn.disabled = true;
             status.textContent = ragMode ? 'Searching...' : 'Thinking...';
-            
+
             try {
                 const endpoint = ragMode ? '/ask-rag' : '/chat';
                 const key = ragMode ? 'question' : 'message';
-                const context = sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null;
-                
+                const context = buildChatContext();
+
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1048,6 +1236,7 @@
         window.addEventListener('load', () => {
             document.getElementById('googleClientId').value = googleClientId;
             initializeGoogleSignIn(false);
+            updateGoogleProfileDisplay();
             renderChannels();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
         });
