@@ -27,14 +27,20 @@
             justify-content: space-between;
             align-items: center;
         }
-        
+
         nav .brand {
             color: white;
             font-size: 1.5rem;
             font-weight: 600;
             letter-spacing: -0.5px;
         }
-        
+
+        nav .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         nav .nav-links a {
             color: white;
             text-decoration: none;
@@ -43,9 +49,30 @@
             border-radius: 4px;
             transition: background-color 0.2s;
         }
-        
+
         nav .nav-links a:hover {
             background-color: rgba(255,255,255,0.1);
+        }
+
+        .user-badge {
+            background-color: rgba(255,255,255,0.1);
+            color: #e1e8ed;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-height: 32px;
+        }
+
+        .user-badge strong {
+            color: #fff;
+        }
+
+        .auth-btn {
+            padding: 0.5rem 0.85rem;
+            font-weight: 600;
         }
         
         /* Main Layout */
@@ -462,6 +489,8 @@
     <nav>
         <div class="brand">iDAQ Diagnostics</div>
         <div class="nav-links">
+            <span id="userBadge" class="user-badge">Not signed in</span>
+            <button id="authButton" class="btn btn-primary auth-btn" type="button">Sign in with Google</button>
             <a href="/admin">Admin</a>
             <a href="/logout">Logout</a>
         </div>
@@ -536,7 +565,65 @@
         </div>
     </div>
 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+
+        async function loadFirebaseConfig() {
+            const response = await fetch('/config/firebase');
+            if (!response.ok) {
+                throw new Error('Unable to load Firebase configuration');
+            }
+            return response.json();
+        }
+
+        async function initializeFirebase() {
+            try {
+                const config = await loadFirebaseConfig();
+                const firebaseApp = initializeApp(config);
+                const auth = getAuth(firebaseApp);
+                const provider = new GoogleAuthProvider();
+
+                const emitAuthChange = async (user) => {
+                    const idToken = user ? await user.getIdToken() : null;
+                    if (idToken) {
+                        localStorage.setItem('idaq_id_token', idToken);
+                    } else {
+                        localStorage.removeItem('idaq_id_token');
+                    }
+
+                    window.currentUser = user;
+                    window.currentIdToken = idToken;
+                    document.dispatchEvent(new CustomEvent('auth-changed', {
+                        detail: { user, idToken }
+                    }));
+                };
+
+                onAuthStateChanged(auth, emitAuthChange);
+
+                window.signInWithGoogle = async () => {
+                    await signInWithPopup(auth, provider);
+                };
+
+                window.signOutUser = async () => {
+                    await signOut(auth);
+                };
+            } catch (error) {
+                console.error('Firebase initialization failed', error);
+                document.dispatchEvent(new CustomEvent('auth-changed', {
+                    detail: { user: null, idToken: null }
+                }));
+            }
+        }
+
+        initializeFirebase();
+    </script>
+
     <script>
+        let currentUser = null;
+        let currentIdToken = localStorage.getItem('idaq_id_token');
+        let sessionOwner = null;
+
         // Channel definitions
         const channels = [
             { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
@@ -555,6 +642,59 @@
 
         const channelState = {};
         channels.forEach(ch => channelState[ch.id] = true);
+
+        function updateUserBadge() {
+            const badge = document.getElementById('userBadge');
+            const authButton = document.getElementById('authButton');
+
+            if (currentUser) {
+                const name = currentUser.displayName || currentUser.email || currentUser.uid;
+                badge.innerHTML = `Signed in as <strong>${name}</strong>`;
+                badge.style.opacity = '1';
+                authButton.textContent = 'Sign out';
+                authButton.className = 'btn btn-secondary auth-btn';
+                sessionOwner = {
+                    uid: currentUser.uid,
+                    email: currentUser.email,
+                    name,
+                };
+            } else {
+                badge.textContent = 'Not signed in';
+                badge.style.opacity = '0.85';
+                authButton.textContent = 'Sign in with Google';
+                authButton.className = 'btn btn-primary auth-btn';
+                sessionOwner = null;
+            }
+        }
+
+        function ensureAuthenticated(showAlert = true) {
+            if (!currentIdToken) {
+                if (showAlert) {
+                    alert('Please sign in with Google to continue.');
+                }
+                return false;
+            }
+            return true;
+        }
+
+        async function authFetch(url, options = {}) {
+            if (!ensureAuthenticated(false)) {
+                throw new Error('Not authenticated');
+            }
+
+            const headers = new Headers(options.headers || {});
+            headers.set('Authorization', `Bearer ${currentIdToken}`);
+
+            return fetch(url, { ...options, headers });
+        }
+
+        async function handleAuthClick() {
+            if (currentUser) {
+                await window.signOutUser?.();
+            } else {
+                await window.signInWithGoogle?.();
+            }
+        }
 
         // Chart setup
         const ctx = document.getElementById('sensorChart').getContext('2d');
@@ -606,6 +746,17 @@
         let chatHistory = [];
         let ragMode = false;
         const MAX_POINTS = 100;
+
+        document.addEventListener('auth-changed', (event) => {
+            currentUser = event.detail.user;
+            currentIdToken = event.detail.idToken;
+            updateUserBadge();
+
+            if (!currentIdToken && monitoring) {
+                stopMonitoring();
+                document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
+            }
+        });
 
         // Render channel checkboxes
         function renderChannels() {
@@ -670,7 +821,12 @@
 
         function startMonitoring() {
             if (monitoring) return;
-            
+
+            if (!ensureAuthenticated()) {
+                document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
+                return;
+            }
+
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
@@ -716,7 +872,7 @@
             if (!monitoring) return;
             
             try {
-                const response = await fetch('/sensor-data');
+                const response = await authFetch('/sensor-data');
                 const data = await response.json();
                 
                 const timestamp = new Date();
@@ -749,6 +905,7 @@
             } catch (error) {
                 console.error('Sensor data error:', error);
                 stopMonitoring();
+                document.getElementById('statusBar').textContent = 'Sensor data error - check login or connection';
             }
         }
 
@@ -777,7 +934,8 @@
                     startTime: new Date(sessionStart).toISOString(),
                     endTime: new Date().toISOString(),
                     mode: simulation ? 'simulation' : 'live',
-                    dataPoints: sessionData.length
+                    dataPoints: sessionData.length,
+                    owner: sessionOwner
                 },
                 data: sessionData
             }, null, 2);
@@ -820,6 +978,11 @@
         async function handlePdfUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
+
+            if (!ensureAuthenticated()) {
+                document.getElementById('uploadStatus').textContent = 'Please sign in first.';
+                return;
+            }
             
             document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
             document.getElementById('uploadStatus').textContent = 'Uploading...';
@@ -828,7 +991,7 @@
             formData.append('file', file);
             
             try {
-                const response = await fetch('/upload-pdf', { method: 'POST', body: formData });
+                const response = await authFetch('/upload-pdf', { method: 'POST', body: formData });
                 const data = await response.json();
                 
                 if (response.ok) {
@@ -864,7 +1027,9 @@
                 timestamp: new Date().toISOString(),
                 sender: isUser ? 'user' : 'assistant',
                 mode: isRag ? 'rag' : 'chat',
-                message: text
+                message: text,
+                userId: sessionOwner?.uid ?? null,
+                userEmail: sessionOwner?.email ?? null
             });
         }
 
@@ -872,7 +1037,12 @@
             const input = document.getElementById('userInput');
             const msg = input.value.trim();
             if (!msg) return;
-            
+
+            if (!ensureAuthenticated()) {
+                document.getElementById('chatStatus').textContent = 'Sign in to chat';
+                return;
+            }
+
             addMessage(msg, true);
             input.value = '';
             
@@ -886,7 +1056,7 @@
                 const key = ragMode ? 'question' : 'message';
                 const context = sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null;
                 
-                const response = await fetch(endpoint, {
+                const response = await authFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ [key]: msg, context })
@@ -902,7 +1072,7 @@
                     status.textContent = 'Error';
                 }
             } catch (error) {
-                addMessage('Connection error. Is Ollama running?', false, ragMode);
+                addMessage('Connection or authentication error. Is Ollama running?', false, ragMode);
                 status.textContent = 'Error';
             } finally {
                 sendBtn.disabled = false;
@@ -917,6 +1087,8 @@
         window.addEventListener('load', () => {
             renderChannels();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
+            document.getElementById('authButton').addEventListener('click', handleAuthClick);
+            updateUserBadge();
         });
     </script>
 </body>
