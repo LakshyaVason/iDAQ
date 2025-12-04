@@ -277,3 +277,31 @@ If you still have issues after following this guide:
 2. Look at browser console (F12) for JavaScript errors
 3. Verify all services are running: `ps aux | grep ollama`
 4. Test each component individually using the curl commands above
+
+
+
+┌─────────────────────────────────────────────────────────┐
+│                  Web Frontend (User Interface)          │
+│        Chart.js Visualization | Unified Chat UI         │
+└──────────────────┬──────────────────────────────────────┘
+                   │ HTTP/REST API
+┌──────────────────▼──────────────────────────────────────┐
+│              FastAPI Backend Server                     │
+│    (Routing, Authentication, File Upload, CORS)         │
+└──────┬──────────────────────────┬──────────────────┬────┘
+       │                          │                  │
+       ▼                          ▼                  ▼
+┌──────────────┐      ┌──────────────────┐   ┌────────────┐
+│   Ollama     │      │  ML Classifiers  │   │    RAG     │
+│ LLM Engine   │      │  (scikit-learn)  │   │  Pipeline  │
+│ llama3.2:1b  │      │  RandomForest    │   │   FAISS    │
+└──────────────┘      └──────────────────┘   └────────────┘
+       │                          │                  │
+       └──────────────────────────┴──────────────────┘
+                                  │
+                    ┌─────────────▼────────────────┐
+                    │  Jetson Orin Nano (Future)   │
+                    │  GPIO Sensor Interface       │
+                    └──────────────────────────────┘
+
+                    
