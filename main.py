@@ -35,8 +35,12 @@ import random
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import auth as firebase_auth, credentials
+
 import pandas as pd
-from fastapi import Depends, FastAPI, Request, UploadFile, File, Form
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,6 +53,20 @@ from local_llama_agent import (
 # Base directory for data and templates
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
+
+load_dotenv()
+
+# Firebase configuration
+REQUIRED_FIREBASE_CONFIG_KEYS = [
+    "apiKey",
+    "authDomain",
+    "projectId",
+    "storageBucket",
+    "messagingSenderId",
+    "appId",
+]
+
+firebase_app: Optional[firebase_admin.App] = None
 
 # Instantiate the diagnostics agent (lazy loads knowledge base and LLM)
 agent = LocalDiagnosticsAgent()
@@ -74,6 +92,7 @@ if not TEMPLATES_DIR.exists():
 # Helper functions
 # ---------------------------------------------------------------------
 
+
 def read_template(name: str) -> str:
     """Read an HTML template from the templates directory."""
     path = TEMPLATES_DIR / name
@@ -89,6 +108,86 @@ def redirect_to_login() -> RedirectResponse:
     return RedirectResponse(url="/login", status_code=303)
 
 
+def _load_service_account_credentials() -> credentials.Base:
+    """Load Firebase service account credentials from environment variables.
+
+    Supports either a JSON string in ``FIREBASE_SERVICE_ACCOUNT`` or a path
+    specified via ``FIREBASE_SERVICE_ACCOUNT_FILE``. If neither is supplied,
+    application default credentials are used.
+    """
+
+    key_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_FILE")
+    key_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
+    project_id = os.environ.get("FIREBASE_PROJECT_ID")
+
+    if key_json:
+        try:
+            parsed = json.loads(key_json.replace("\\n", "\n"))
+            return credentials.Certificate(parsed)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Invalid FIREBASE_SERVICE_ACCOUNT JSON: {exc}")
+
+    if key_path and Path(key_path).exists():
+        return credentials.Certificate(key_path)
+
+    if project_id:
+        os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
+    return credentials.ApplicationDefault()
+
+
+def init_firebase_admin():
+    """Initialize the Firebase Admin SDK if it has not been initialized."""
+
+    global firebase_app
+    if firebase_admin._apps:
+        firebase_app = firebase_admin.get_app()
+        return firebase_app
+
+    cred = _load_service_account_credentials()
+    firebase_app = firebase_admin.initialize_app(cred)
+    return firebase_app
+
+
+def get_firebase_client_config() -> dict:
+    """Assemble Firebase client configuration from environment variables."""
+
+    config = {
+        "apiKey": os.environ.get("FIREBASE_API_KEY"),
+        "authDomain": os.environ.get("FIREBASE_AUTH_DOMAIN"),
+        "projectId": os.environ.get("FIREBASE_PROJECT_ID"),
+        "storageBucket": os.environ.get("FIREBASE_STORAGE_BUCKET"),
+        "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
+        "appId": os.environ.get("FIREBASE_APP_ID"),
+    }
+
+    measurement_id = os.environ.get("FIREBASE_MEASUREMENT_ID")
+    if measurement_id:
+        config["measurementId"] = measurement_id
+
+    missing_keys = [k for k in REQUIRED_FIREBASE_CONFIG_KEYS if not config.get(k)]
+    if missing_keys:
+        raise RuntimeError(
+            "Missing Firebase client configuration keys: " + ", ".join(missing_keys)
+        )
+
+    return config
+
+
+async def verify_firebase_token(authorization: str = Header(None)) -> dict:
+    """Verify a Firebase ID token from the Authorization header."""
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    token = authorization.split(" ", 1)[1]
+    init_firebase_admin()
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+        return decoded
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=401, detail=f"Invalid ID token: {exc}")
+
+
 # ---------------------------------------------------------------------
 # Startup event to check Ollama status
 # ---------------------------------------------------------------------
@@ -99,6 +198,12 @@ async def startup_event():
     print("=" * 60)
     print("iDAQ Diagnostics Server Starting Up")
     print("=" * 60)
+    try:
+        init_firebase_admin()
+        print("Firebase Admin SDK initialized")
+    except Exception as exc:  # noqa: BLE001
+        print(f"⚠️ WARNING: Firebase Admin initialization failed: {exc}")
+    
     try:
         status = agent.ollama.ensure_model_available()
         print(status)
@@ -152,6 +257,16 @@ async def logout():
     return response
 
 
+@app.get("/config/firebase")
+async def firebase_config():
+    """Expose Firebase client configuration to the frontend."""
+
+    try:
+        return get_firebase_client_config()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 # ---------------------------------------------------------------------
 # Admin endpoints
 # ---------------------------------------------------------------------
@@ -181,7 +296,11 @@ async def upload_normal(request: Request, file: UploadFile = File(...)):
 
 
 @app.post("/upload-pdf")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+async def upload_pdf(
+    request: Request,
+    file: UploadFile = File(...),
+    user: dict = Depends(verify_firebase_token),
+):
     """
     Upload a datasheet PDF for retrieval‑augmented generation.  The PDF
     will be saved to a ``datasheets`` directory and ingested into the
@@ -267,7 +386,7 @@ def _generate_channels(base: float, spread: float, count: int = 4) -> list[float
 
 
 @app.get("/sensor-data")
-async def sensor_data() -> dict:
+async def sensor_data(user: dict = Depends(verify_firebase_token)) -> dict:
     """
     Return simulated sensor data across four voltage, current and temperature channels.
     In a real deployment this would interface with the Jetson GPIO/ADC hardware.
@@ -280,7 +399,7 @@ async def sensor_data() -> dict:
 
 
 @app.post("/chat")
-async def chat_endpoint(request: Request):
+async def chat_endpoint(request: Request, user: dict = Depends(verify_firebase_token)):
     """
     Accept a user message and return a response from the local LLM.  If
     the Ollama server is unreachable, returns an error message.
@@ -292,7 +411,8 @@ async def chat_endpoint(request: Request):
         if not message:
             return JSONResponse({"response": "Please provide a message."}, status_code=400)
 
-        print(f"Received chat message: {message}")
+        requester = user.get("email") or user.get("uid")
+        print(f"Received chat message from {requester}: {message}")
         if sensor_context:
             context_block = json.dumps(sensor_context, indent=2)
             message = f"{message}\n\n[Latest simulated sensor context]\n{context_block}"
@@ -310,7 +430,7 @@ async def chat_endpoint(request: Request):
 
 
 @app.post("/ask-rag")
-async def ask_rag(request: Request):
+async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token)):
     """
     Accept a question and return a response from the RAG pipeline.  The
     agent will retrieve relevant context from ingested datasheets and
@@ -322,7 +442,8 @@ async def ask_rag(request: Request):
         if not question:
             return JSONResponse({"response": "Please provide a question."}, status_code=400)
         
-        print(f"Received RAG question: {question}")
+        requester = user.get("email") or user.get("uid")
+        print(f"Received RAG question from {requester}: {question}")
         answer = agent.query_rag(question)
         print(f"RAG response: {answer[:100]}...")
         return {"response": answer}
