@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,36 +8,36 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
-        * { 
+        * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background-color: #f5f7fa;
             color: #2c3e50;
         }
-        
+
         /* Navigation */
         nav {
             background-color: #2c3e50;
             padding: 1rem 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 1rem;
         }
-        
+
         nav .brand {
             color: white;
             font-size: 1.5rem;
             font-weight: 600;
             letter-spacing: -0.5px;
         }
-        
+
         nav .nav-links a {
             color: white;
             text-decoration: none;
@@ -47,7 +48,7 @@
         }
 
         nav .nav-links a:hover {
-            background-color: rgba(255,255,255,0.1);
+            background-color: rgba(255, 255, 255, 0.1);
         }
 
         .auth-bar {
@@ -62,7 +63,7 @@
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: rgba(255,255,255,0.15);
+            background: rgba(255, 255, 255, 0.15);
             color: white;
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
@@ -89,7 +90,7 @@
             border: none;
             font-size: 0.9rem;
         }
-        
+
         /* Main Layout */
         .main-container {
             display: grid;
@@ -99,14 +100,14 @@
             max-width: 1800px;
             margin: 0 auto;
         }
-        
+
         .panel {
             background: white;
             border-radius: 8px;
             padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         /* Monitoring Panel */
         .panel-header {
             display: flex;
@@ -116,25 +117,25 @@
             padding-bottom: 1rem;
             border-bottom: 1px solid #e1e8ed;
         }
-        
+
         .panel-header h1 {
             font-size: 1.5rem;
             font-weight: 600;
         }
-        
+
         .session-badge {
             display: flex;
             gap: 1rem;
             font-size: 0.875rem;
             color: #657786;
         }
-        
+
         .session-badge span {
             padding: 0.25rem 0.75rem;
             background-color: #f5f7fa;
             border-radius: 4px;
         }
-        
+
         /* Controls */
         .controls {
             display: flex;
@@ -142,7 +143,7 @@
             margin-bottom: 1.5rem;
             flex-wrap: wrap;
         }
-        
+
         .btn {
             padding: 0.625rem 1.25rem;
             font-size: 0.875rem;
@@ -152,53 +153,53 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        
+
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
-        
+
         .btn-primary {
             background-color: #1da1f2;
             color: white;
         }
-        
+
         .btn-primary:hover:not(:disabled) {
             background-color: #1a91da;
         }
-        
+
         .btn-success {
             background-color: #17bf63;
             color: white;
         }
-        
+
         .btn-success:hover:not(:disabled) {
             background-color: #13a555;
         }
-        
+
         .btn-danger {
             background-color: #e0245e;
             color: white;
         }
-        
+
         .btn-danger:hover:not(:disabled) {
             background-color: #c91d4f;
         }
-        
+
         .btn-secondary {
             background-color: #657786;
             color: white;
         }
-        
+
         .btn-secondary:hover:not(:disabled) {
             background-color: #56646f;
         }
-        
+
         /* Channel Selector */
         .channel-selector {
             margin-bottom: 1.5rem;
         }
-        
+
         .channel-selector summary {
             cursor: pointer;
             padding: 0.75rem;
@@ -207,38 +208,38 @@
             font-weight: 500;
             user-select: none;
         }
-        
+
         .channel-selector summary:hover {
             background-color: #e8ecef;
         }
-        
+
         .channel-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 0.75rem;
             padding: 1rem 0;
         }
-        
+
         .channel-item {
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
-        
+
         .channel-item input[type="checkbox"] {
             width: 16px;
             height: 16px;
             cursor: pointer;
             flex-shrink: 0;
         }
-        
+
         .channel-legend {
             width: 12px;
             height: 12px;
             border-radius: 2px;
             flex-shrink: 0;
         }
-        
+
         .channel-name-input {
             flex: 1;
             padding: 0.375rem 0.5rem;
@@ -247,12 +248,12 @@
             font-size: 0.8125rem;
             min-width: 0;
         }
-        
+
         .channel-name-input:focus {
             outline: none;
             border-color: #1da1f2;
         }
-        
+
         .channel-base-label {
             font-size: 0.75rem;
             font-weight: 600;
@@ -260,7 +261,7 @@
             margin-right: 0.25rem;
             flex-shrink: 0;
         }
-        
+
         /* Chart */
         .chart-container {
             position: relative;
@@ -304,7 +305,7 @@
             color: #657786;
             font-weight: 600;
         }
-        
+
         /* Export Section */
         .export-section {
             display: flex;
@@ -327,7 +328,7 @@
             border-radius: 4px;
             font-size: 0.9rem;
         }
-        
+
         /* Status Bar */
         .status-bar {
             padding: 0.75rem;
@@ -337,7 +338,7 @@
             color: #657786;
             margin-top: 1rem;
         }
-        
+
         /* Chat Panel */
         .chat-header {
             display: flex;
@@ -347,12 +348,12 @@
             padding-bottom: 1rem;
             border-bottom: 1px solid #e1e8ed;
         }
-        
+
         .chat-header h2 {
             font-size: 1.25rem;
             font-weight: 600;
         }
-        
+
         .mode-toggle {
             display: flex;
             align-items: center;
@@ -361,26 +362,26 @@
             padding: 0.5rem;
             border-radius: 6px;
         }
-        
+
         .mode-toggle label {
             font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
             color: #657786;
         }
-        
+
         .toggle-switch {
             position: relative;
             width: 44px;
             height: 24px;
         }
-        
+
         .toggle-switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
-        
+
         .toggle-slider {
             position: absolute;
             cursor: pointer;
@@ -392,7 +393,7 @@
             transition: 0.3s;
             border-radius: 24px;
         }
-        
+
         .toggle-slider:before {
             position: absolute;
             content: "";
@@ -404,15 +405,15 @@
             transition: 0.3s;
             border-radius: 50%;
         }
-        
-        input:checked + .toggle-slider {
+
+        input:checked+.toggle-slider {
             background-color: #17bf63;
         }
-        
-        input:checked + .toggle-slider:before {
+
+        input:checked+.toggle-slider:before {
             transform: translateX(20px);
         }
-        
+
         /* Upload Section */
         .upload-section {
             display: none;
@@ -423,20 +424,20 @@
             text-align: center;
             margin-bottom: 1rem;
         }
-        
+
         .upload-section.active {
             display: block;
         }
-        
+
         .upload-section h3 {
             font-size: 1rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .upload-section input[type="file"] {
             display: none;
         }
-        
+
         .upload-label {
             display: inline-block;
             padding: 0.625rem 1.25rem;
@@ -447,17 +448,17 @@
             font-weight: 500;
             font-size: 0.875rem;
         }
-        
+
         .upload-label:hover {
             background-color: #1a91da;
         }
-        
+
         .file-info {
             margin-top: 0.5rem;
             font-size: 0.875rem;
             color: #657786;
         }
-        
+
         /* Messages */
         #messages {
             height: 450px;
@@ -468,7 +469,7 @@
             margin-bottom: 1rem;
             background-color: #f5f7fa;
         }
-        
+
         .message {
             margin-bottom: 1rem;
             padding: 0.75rem 1rem;
@@ -476,54 +477,55 @@
             max-width: 85%;
             animation: slideIn 0.2s ease-out;
         }
-        
+
         @keyframes slideIn {
             from {
                 opacity: 0;
                 transform: translateY(10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        
+
         .message.user {
             background-color: #1da1f2;
             color: white;
             margin-left: auto;
             text-align: right;
         }
-        
+
         .message.assistant {
             background-color: white;
             border: 1px solid #e1e8ed;
         }
-        
+
         .message.assistant.rag {
             background-color: #fff4e6;
             border-left: 3px solid #ff9800;
         }
-        
+
         .message-label {
             font-size: 0.75rem;
             font-weight: 600;
             margin-bottom: 0.25rem;
             opacity: 0.8;
         }
-        
+
         .message-content {
             font-size: 0.9375rem;
             line-height: 1.5;
         }
-        
+
         /* Input Group */
         .input-group {
             display: flex;
             gap: 0.5rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .input-group input {
             flex: 1;
             padding: 0.75rem;
@@ -531,12 +533,12 @@
             border-radius: 6px;
             font-size: 0.9375rem;
         }
-        
+
         .input-group input:focus {
             outline: none;
             border-color: #1da1f2;
         }
-        
+
         /* Responsive */
         @media (max-width: 1200px) {
             .main-container {
@@ -545,6 +547,7 @@
         }
     </style>
 </head>
+
 <body>
     <nav>
         <div class="brand">iDAQ Diagnostics</div>
@@ -558,7 +561,8 @@
                 <button class="btn btn-secondary" onclick="applyGoogleClientId()">Load</button>
             </div>
             <div id="googleSignInContainer"></div>
-            <button id="googleSignOut" class="btn btn-secondary" style="display:none;" onclick="googleSignOut()">Sign out</button>
+            <button id="googleSignOut" class="btn btn-secondary" style="display:none;" onclick="googleSignOut()">Sign
+                out</button>
         </div>
         <div class="nav-links">
             <a href="/admin">Admin</a>
@@ -579,7 +583,8 @@
 
             <div class="controls">
                 <button id="startBtn" class="btn btn-success" onclick="startMonitoring()">Start</button>
-                <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()" style="display:none;">Stop</button>
+                <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()"
+                    style="display:none;">Stop</button>
                 <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Simulation Mode</button>
                 <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
             </div>
@@ -604,7 +609,9 @@
                             </tr>
                         </thead>
                         <tbody id="latestTableBody">
-                            <tr><td colspan="2">No data yet</td></tr>
+                            <tr>
+                                <td colspan="2">No data yet</td>
+                            </tr>
                         </tbody>
                     </table>
                     <div class="status-bar" id="latestTimestamp">Waiting for data...</div>
@@ -620,7 +627,6 @@
 
             <div class="export-section">
                 <label>Save to Firebase:</label>
-                <input type="text" id="userId" placeholder="User ID or email" aria-label="User ID">
                 <select id="sessionFormat" aria-label="Select format">
                     <option value="json">JSON</option>
                     <option value="csv">CSV</option>
@@ -802,16 +808,24 @@
             renderGoogleButton();
         }
 
-        function initializeGoogleSignIn(prompt = true) {
-            renderGoogleButton();
-            if (prompt && window.google?.accounts?.id && googleClientId) {
-                google.accounts.id.prompt();
-            }
+        function initializeGoogleSignIn() {
+            // Auto-detect from /config/firebase endpoint
+            fetch('/config/firebase')
+                .then(res => res.json())
+                .then(config => {
+                    // Extract client ID from appId (format: 1:CLIENT_ID:web:...)
+                    const parts = config.appId.split(':');
+                    googleClientId = parts[0] + '-' + parts[1] + '.apps.googleusercontent.com';
+                    renderGoogleButton();
+                })
+                .catch(err => {
+                    console.error('Failed to load Firebase config', err);
+                });
         }
 
         function googleSignOut() {
             if (window.google?.accounts?.id) {
-                google.accounts.id.revoke(googleProfile?.email || '', () => {});
+                google.accounts.id.revoke(googleProfile?.email || '', () => { });
             }
             googleProfile = null;
             updateGoogleProfileDisplay();
@@ -824,28 +838,28 @@
             channels.forEach(ch => {
                 const div = document.createElement('div');
                 div.className = 'channel-item';
-                
+
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.id = ch.id;
                 checkbox.checked = channelState[ch.id];
                 checkbox.onchange = () => toggleChannel(ch.id);
-                
+
                 const legend = document.createElement('span');
                 legend.className = 'channel-legend';
                 legend.style.backgroundColor = ch.color;
-                
+
                 const baseLabel = document.createElement('span');
                 baseLabel.className = 'channel-base-label';
                 baseLabel.textContent = ch.baseLabel;
-                
+
                 const nameInput = document.createElement('input');
                 nameInput.type = 'text';
                 nameInput.className = 'channel-name-input';
                 nameInput.placeholder = 'Custom name...';
                 nameInput.value = ch.customName;
                 nameInput.oninput = (e) => updateChannelName(ch.id, e.target.value);
-                
+
                 div.appendChild(checkbox);
                 div.appendChild(legend);
                 div.appendChild(baseLabel);
@@ -858,7 +872,7 @@
             channelState[id] = !channelState[id];
             chart.update();
         }
-        
+
         function updateChannelName(id, name) {
             const ch = channels.find(c => c.id === id);
             if (ch) {
@@ -925,7 +939,7 @@
 
         function startMonitoring() {
             if (monitoring) return;
-            
+
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
@@ -941,7 +955,7 @@
 
         function stopMonitoring() {
             if (!monitoring) return;
-            
+
             monitoring = false;
             clearInterval(monitorInterval);
             clearInterval(sessionInterval);
@@ -972,10 +986,10 @@
 
             try {
                 const data = simulation ? generateSimulatedData() : await (await fetch('/sensor-data')).json();
-                
+
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
-                
+
                 sessionData.push({
                     timestamp: timestamp.toISOString(),
                     time: timeStr,
@@ -1015,7 +1029,7 @@
         // Export functions
         function exportToCSV() {
             if (sessionData.length === 0) { alert('No data'); return; }
-            
+
             const headers = ['Timestamp', 'Time', ...channels.map(ch => {
                 return ch.customName.trim() ? `${ch.baseLabel} - ${ch.customName}` : ch.baseLabel;
             })];
@@ -1023,7 +1037,7 @@
                 const values = channels.map(ch => d[ch.type]?.[ch.index] ?? '');
                 return [d.timestamp, d.time, ...values];
             });
-            
+
             let csv = headers.join(',') + '\n';
             csv += rows.map(row => row.join(',')).join('\n');
             download(csv, `idaq_${Date.now()}.csv`, 'text/csv');
@@ -1031,7 +1045,7 @@
 
         function exportToJSON() {
             if (sessionData.length === 0) { alert('No data'); return; }
-            
+
             const json = JSON.stringify({
                 session: {
                     startTime: new Date(sessionStart).toISOString(),
@@ -1050,23 +1064,31 @@
             download(json, `idaq_chat_${Date.now()}.json`, 'application/json');
         }
 
+        // FIND this function and REPLACE it:
         async function saveSessionToFirebase() {
-            if (sessionData.length === 0) { alert('No session data to save'); return; }
+            if (sessionData.length === 0) {
+                alert('No session data to save');
+                return;
+            }
 
-            const userId = document.getElementById('userId').value.trim() || 'anonymous';
-            const format = document.getElementById('sessionFormat').value;
+            if (!googleProfile) {
+                alert('Please sign in with Google first');
+                return;
+            }
+
             const status = document.getElementById('firebaseStatus');
-
             status.textContent = 'Saving session to Firebase...';
 
             const payload = {
-                userId,
-                format,
+                userId: googleProfile.email,
+                format: document.getElementById('sessionFormat').value,
                 mode: simulation ? 'simulation' : 'live',
                 session: {
                     startTime: sessionStart ? new Date(sessionStart).toISOString() : null,
                     endTime: new Date().toISOString(),
-                    points: sessionData.length
+                    points: sessionData.length,
+                    userName: googleProfile.name,
+                    userEmail: googleProfile.email
                 },
                 data: sessionData
             };
@@ -1080,12 +1102,12 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    status.textContent = data.message || 'Session saved to Firebase';
+                    status.textContent = `✅ ${data.message}`;
                 } else {
-                    status.textContent = data.error || 'Unable to save session';
+                    status.textContent = `❌ ${data.error || 'Unable to save session'}`;
                 }
             } catch (error) {
-                status.textContent = 'Connection error while saving to Firebase';
+                status.textContent = '❌ Connection error while saving to Firebase';
             }
         }
 
@@ -1104,7 +1126,7 @@
             ragMode = document.getElementById('ragToggle').checked;
             const uploadSection = document.getElementById('uploadSection');
             const input = document.getElementById('userInput');
-            
+
             if (ragMode) {
                 uploadSection.classList.add('active');
                 input.placeholder = 'Ask about datasheets...';
@@ -1119,17 +1141,17 @@
         async function handlePdfUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
-            
+
             document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
             document.getElementById('uploadStatus').textContent = 'Uploading...';
-            
+
             const formData = new FormData();
             formData.append('file', file);
-            
+
             try {
                 const response = await fetch('/upload-pdf', { method: 'POST', body: formData });
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     document.getElementById('uploadStatus').textContent = data.message;
                     addMessage(`PDF "${file.name}" uploaded successfully`, false, true);
@@ -1145,20 +1167,20 @@
             const container = document.getElementById('messages');
             const div = document.createElement('div');
             div.className = `message ${isUser ? 'user' : 'assistant'}${isRag && !isUser ? ' rag' : ''}`;
-            
+
             const label = document.createElement('div');
             label.className = 'message-label';
             label.textContent = isUser ? 'You' : 'Assistant';
-            
+
             const content = document.createElement('div');
             content.className = 'message-content';
             content.textContent = text;
-            
+
             div.appendChild(label);
             div.appendChild(content);
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
-            
+
             chatHistory.push({
                 timestamp: new Date().toISOString(),
                 sender: isUser ? 'user' : 'assistant',
@@ -1171,30 +1193,44 @@
             if (sessionData.length === 0) return null;
 
             const latest = sessionData[sessionData.length - 1];
-            const searchableLog = sessionData.slice(-200).map(entry => ({
-                time: entry.time,
-                timestamp: entry.timestamp,
-                voltage: entry.voltage,
-                current: entry.current,
-                temperature: entry.temperature,
-            }));
+
+            // Create detailed lookup with channel labels
+            const detailedLog = sessionData.slice(-200).map(entry => {
+                const channelData = {};
+                channels.forEach(ch => {
+                    const label = ch.customName.trim() || ch.baseLabel;
+                    channelData[label] = entry[ch.type]?.[ch.index];
+                });
+                return {
+                    time: entry.time,
+                    timestamp: entry.timestamp,
+                    ...channelData
+                };
+            });
 
             return {
                 latest,
-                searchableLog,
-                lookupByTime: sessionLookup,
-                note: 'Use exact time matches in searchableLog to answer timestamp questions.',
+                detailedLog,
+                instruction: `Use detailedLog to find readings by time. Each entry has 'time' (HH:MM:SS) and channel values. Channel names: ${channels.map(ch => ch.customName.trim() || ch.baseLabel).join(', ')}. When asked about "Channel X Voltage at HH:MM:SS", find the entry with matching 'time' field.`
             };
         }
+
+        return {
+            latest,
+            searchableLog,
+            lookupByTime: sessionLookup,
+            note: 'Use exact time matches in searchableLog to answer timestamp questions.',
+        };
+        
 
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const msg = input.value.trim();
             if (!msg) return;
-            
+
             addMessage(msg, true);
             input.value = '';
-            
+
             const sendBtn = document.getElementById('sendBtn');
             const status = document.getElementById('chatStatus');
             sendBtn.disabled = true;
@@ -1210,9 +1246,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ [key]: msg, context })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     addMessage(data.response, false, ragMode);
                     status.textContent = 'Ready';
@@ -1242,4 +1278,5 @@
         });
     </script>
 </body>
+
 </html>

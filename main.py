@@ -210,15 +210,11 @@ async def upload_normal(request: Request, file: UploadFile = File(...)):
 
 
 @app.post("/upload-pdf")
-async def upload_pdf(request: Request, file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...)):
     """
-    Upload a datasheet PDF for retrieval‑augmented generation.  The PDF
-    will be saved to a ``datasheets`` directory and ingested into the
-    vector store via the diagnostics agent.  Only admins can perform
-    this action.
+    Upload a datasheet PDF for retrieval‑augmented generation.
+    Anyone can upload PDFs.
     """
-    if not is_admin(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=403)
     contents = await file.read()
     datasheets_dir = BASE_DIR / "datasheets"
     datasheets_dir.mkdir(parents=True, exist_ok=True)
@@ -362,11 +358,17 @@ async def chat_endpoint(request: Request):
 
         print(f"Received chat message: {message}")
         if sensor_context:
-            context_block = json.dumps(sensor_context, indent=2)
-            message = f"{message}\n\n[Latest simulated sensor context]\n{context_block}"
+            # Format context more clearly for the LLM
+            context_str = json.dumps(sensor_context, indent=2)
+            enhanced_prompt = f"""User Question: {message}
+
+Available Data Context:
+{context_str}
+
+Instructions: Answer the user's question using the provided data context. If they ask about specific times, look in the 'detailedLog' array for entries matching that time. Be precise with numbers and timestamps."""
+            message = enhanced_prompt
+        
         response_text = agent.ollama.generate(message)
-        if not response_text.strip():
-            response_text = "I couldn't generate a reply just now. Please confirm Ollama is running and try again."
         print(f"LLM response: {response_text[:100]}...")
         return {"response": response_text}
     except OllamaNotRunningError as exc:
