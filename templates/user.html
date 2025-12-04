@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iDAQ User Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { 
             box-sizing: border-box;
@@ -26,6 +27,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 1rem;
         }
         
         nav .brand {
@@ -43,9 +45,49 @@
             border-radius: 4px;
             transition: background-color 0.2s;
         }
-        
+
         nav .nav-links a:hover {
             background-color: rgba(255,255,255,0.1);
+        }
+
+        .auth-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .auth-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.9rem;
+        }
+
+        .auth-chip .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #1df275;
+            box-shadow: 0 0 0 3px rgba(29, 242, 117, 0.25);
+        }
+
+        .auth-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .auth-controls input {
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            border: none;
+            font-size: 0.9rem;
         }
         
         /* Main Layout */
@@ -469,6 +511,18 @@
 <body>
     <nav>
         <div class="brand">iDAQ Diagnostics</div>
+        <div class="auth-bar">
+            <div class="auth-chip" id="googleProfile" style="display:none;">
+                <span class="status-dot"></span>
+                <span id="googleEmail">Signed in</span>
+            </div>
+            <div class="auth-controls">
+                <input type="text" id="googleClientId" placeholder="Google Client ID" aria-label="Google Client ID">
+                <button class="btn btn-secondary" onclick="applyGoogleClientId()">Load</button>
+            </div>
+            <div id="googleSignInContainer"></div>
+            <button id="googleSignOut" class="btn btn-secondary" style="display:none;" onclick="googleSignOut()">Sign out</button>
+        </div>
         <div class="nav-links">
             <a href="/admin">Admin</a>
             <a href="/logout">Logout</a>
@@ -992,6 +1046,8 @@
 
         // Initialize
         window.addEventListener('load', () => {
+            document.getElementById('googleClientId').value = googleClientId;
+            initializeGoogleSignIn(false);
             renderChannels();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
         });
