@@ -914,7 +914,7 @@
         function startMonitoring() {
             if (monitoring) return;
 
-            if (!ensureAuthenticated()) {
+            if (!simulation && !ensureAuthenticated()) {
                 document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
                 return;
             }
@@ -950,6 +950,12 @@
             const btn = document.getElementById('simBtn');
             btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
             btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
+
+            if (simulation) {
+                document.getElementById('statusBar').textContent = 'Simulation armed — press Start to generate virtual data';
+            } else {
+                document.getElementById('statusBar').textContent = 'Simulation disabled — live monitoring requires sign in';
+            }
         }
 
         function clearGraph() {
@@ -960,13 +966,31 @@
             }
         }
 
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function generateSimulatedReadings() {
+            const makeSeries = (base, spread) => Array.from(
+                { length: 4 },
+                () => parseFloat(randomInRange(base - spread, base + spread).toFixed(2))
+            );
+
+            return {
+                voltage: makeSeries(300, 15),
+                current: makeSeries(15, 4),
+                temperature: makeSeries(45, 20)
+            };
+        }
+
         async function fetchSensorData() {
             if (!monitoring) return;
-            
+
             try {
-                const response = await authFetch('/sensor-data');
-                const data = await response.json();
-                
+                const data = simulation
+                    ? generateSimulatedReadings()
+                    : await authFetch('/sensor-data').then(resp => resp.json());
+
                 latestReadings = {
                     voltage: data.voltage,
                     current: data.current,
@@ -1000,7 +1024,7 @@
                 chart.update();
                 
                 const mode = simulation ? 'SIM' : 'LIVE';
-                document.getElementById('statusBar').textContent = 
+                document.getElementById('statusBar').textContent =
                     `${mode} | ${timeStr} | V1: ${data.voltage[0]}V C1: ${data.current[0]}A T1: ${data.temperature[0]}°C`;
             } catch (error) {
                 console.error('Sensor data error:', error);
@@ -1170,7 +1194,8 @@
                     addMessage(data.response, false, ragMode);
                     status.textContent = 'Ready';
                 } else {
-                    addMessage(`Error: ${data.response || data.error}`, false, ragMode);
+                    const errorText = data.response || data.error || data.detail || 'Unknown error';
+                    addMessage(`Error: ${errorText}`, false, ragMode);
                     status.textContent = 'Error';
                 }
             } catch (error) {
