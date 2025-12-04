@@ -40,7 +40,6 @@ from fastapi import Depends, FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from firebase_admin import credentials, db, initialize_app
 
 from local_llama_agent import (
     LocalDiagnosticsAgent,
@@ -56,10 +55,6 @@ agent = LocalDiagnosticsAgent()
 
 # Create the FastAPI app
 app = FastAPI(title="iDAQ Diagnostics Server")
-
-# Firebase app placeholder (initialized lazily)
-firebase_app = None
-firebase_db = None
 
 # Add CORS middleware to allow frontend requests
 app.add_middleware(
@@ -94,29 +89,6 @@ def redirect_to_login() -> RedirectResponse:
     return RedirectResponse(url="/login", status_code=303)
 
 
-def init_firebase():
-    """Initialize the Firebase app if credentials and DB URL are provided."""
-
-    global firebase_app, firebase_db
-
-    cred_path = os.getenv("FIREBASE_CREDENTIALS")
-    db_url = os.getenv("FIREBASE_DB_URL")
-
-    if not cred_path or not db_url:
-        print("Firebase not configured. Set FIREBASE_CREDENTIALS and FIREBASE_DB_URL to enable session storage.")
-        return
-
-    try:
-        creds = credentials.Certificate(cred_path)
-        firebase_app = initialize_app(creds, {"databaseURL": db_url})
-        firebase_db = db.reference("/")
-        print("✅ Firebase connected for session storage.")
-    except Exception as exc:
-        firebase_app = None
-        firebase_db = None
-        print(f"⚠️ Failed to initialize Firebase: {exc}")
-
-
 # ---------------------------------------------------------------------
 # Startup event to check Ollama status
 # ---------------------------------------------------------------------
@@ -127,7 +99,6 @@ async def startup_event():
     print("=" * 60)
     print("iDAQ Diagnostics Server Starting Up")
     print("=" * 60)
-    init_firebase()
     try:
         status = agent.ollama.ensure_model_available()
         print(status)
@@ -285,45 +256,6 @@ async def train_models(request: Request):
 async def user_page():
     """Render the user dashboard with live graph and chat interface."""
     return HTMLResponse(read_template("user.html"))
-
-
-@app.post("/save-session")
-async def save_session(payload: dict):
-    """Persist a monitoring session to Firebase in JSON or CSV format."""
-
-    if firebase_db is None:
-        return JSONResponse(
-            {"error": "Firebase is not configured on the server."}, status_code=500
-        )
-
-    user_id = (payload.get("userId") or "anonymous").replace("/", "_")
-    fmt = (payload.get("format") or "json").lower()
-    session_meta = payload.get("session") or {}
-    data_points = payload.get("data") or []
-    mode = payload.get("mode") or "live"
-
-    try:
-        if fmt == "csv":
-            df = pd.DataFrame(data_points)
-            serialized = df.to_csv(index=False)
-        else:
-            serialized = json.dumps({"session": session_meta, "data": data_points})
-
-        firebase_db.child("sessions").child(user_id).push(
-            {
-                "format": fmt,
-                "mode": mode,
-                "createdAt": pd.Timestamp.utcnow().isoformat(),
-                "session": session_meta,
-                "data": serialized,
-            }
-        )
-
-        return {"message": f"Session stored to Firebase as {fmt}."}
-    except Exception as exc:
-        return JSONResponse(
-            {"error": f"Failed to store session: {exc}"}, status_code=500
-        )
 
 
 def _generate_channels(base: float, spread: float, count: int = 4) -> list[float]:

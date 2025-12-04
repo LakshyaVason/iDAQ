@@ -153,11 +153,7 @@ class OllamaClient:
     def _post(self, path: str, payload: Dict) -> Dict:
         url = f"{self.base_url}{path}"
         try:
-            # Keep the connect timeout short so the UI fails fast when the
-            # Ollama server is down or unreachable. A longer read timeout
-            # is allowed for generation to complete once the connection is
-            # established.
-            response = requests.post(url, json=payload, timeout=(5, 30))
+            response = requests.post(url, json=payload, timeout=60)
         except requests.RequestException as exc:
             raise OllamaNotRunningError(
                 f"Failed to reach Ollama at {self.base_url}. Ensure 'ollama serve' is running."
