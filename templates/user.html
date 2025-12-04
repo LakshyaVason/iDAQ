@@ -235,10 +235,18 @@
             margin-top: 1rem;
             border-top: 1px solid #e1e8ed;
         }
-        
+
         .export-section label {
             font-weight: 500;
             margin-right: 0.5rem;
+        }
+
+        .export-section input,
+        .export-section select {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.9rem;
         }
         
         /* Status Bar */
@@ -501,6 +509,18 @@
                 <button class="btn btn-primary" onclick="exportChat()">Chat</button>
             </div>
 
+            <div class="export-section">
+                <label>Save to Firebase:</label>
+                <input type="text" id="userId" placeholder="User ID or email" aria-label="User ID">
+                <select id="sessionFormat" aria-label="Select format">
+                    <option value="json">JSON</option>
+                    <option value="csv">CSV</option>
+                </select>
+                <button class="btn btn-primary" onclick="saveSessionToFirebase()">Upload Session</button>
+            </div>
+
+            <div class="status-bar" id="firebaseStatus">Session data will be uploaded to Firebase when configured.</div>
+
             <div class="status-bar" id="statusBar">Ready to start monitoring</div>
         </div>
 
@@ -606,6 +626,11 @@
         let chatHistory = [];
         let ragMode = false;
         const MAX_POINTS = 100;
+        let simulatedSnapshot = {
+            voltage: [300, 306, 298, 312],
+            current: [15, 16, 14, 17],
+            temperature: [45, 48, 47, 49]
+        };
 
         // Render channel checkboxes
         function renderChannels() {
@@ -662,10 +687,25 @@
             const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            document.getElementById('sessionTime').textContent = 
+            document.getElementById('sessionTime').textContent =
                 `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            document.getElementById('sessionPoints').textContent = 
+            document.getElementById('sessionPoints').textContent =
                 `${sessionData.length} points`;
+        }
+
+        function generateSimulatedData() {
+            const jitter = (value, spread) => {
+                const delta = (Math.random() * spread * 2) - spread;
+                return Number((value + delta).toFixed(2));
+            };
+
+            simulatedSnapshot = {
+                voltage: simulatedSnapshot.voltage.map(v => jitter(v, 3.5)),
+                current: simulatedSnapshot.current.map(v => jitter(v, 0.6)),
+                temperature: simulatedSnapshot.temperature.map(v => jitter(v, 1.2))
+            };
+
+            return JSON.parse(JSON.stringify(simulatedSnapshot));
         }
 
         function startMonitoring() {
@@ -674,11 +714,10 @@
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
-            
+
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
-            document.getElementById('simBtn').disabled = true;
-            
+
             monitorInterval = setInterval(fetchSensorData, 2000);
             sessionInterval = setInterval(updateSessionInfo, 1000);
             fetchSensorData();
@@ -690,10 +729,9 @@
             monitoring = false;
             clearInterval(monitorInterval);
             clearInterval(sessionInterval);
-            
+
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('simBtn').disabled = false;
             document.getElementById('statusBar').textContent = 'Monitoring stopped';
         }
 
@@ -702,6 +740,7 @@
             const btn = document.getElementById('simBtn');
             btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
             btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
+            document.getElementById('statusBar').textContent = simulation ? 'Simulation mode enabled' : 'Live mode enabled';
         }
 
         function clearGraph() {
@@ -714,10 +753,9 @@
 
         async function fetchSensorData() {
             if (!monitoring) return;
-            
+
             try {
-                const response = await fetch('/sensor-data');
-                const data = await response.json();
+                const data = simulation ? generateSimulatedData() : await (await fetch('/sensor-data')).json();
                 
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
@@ -788,6 +826,45 @@
             if (chatHistory.length === 0) { alert('No chat history'); return; }
             const json = JSON.stringify({ exportTime: new Date().toISOString(), messages: chatHistory }, null, 2);
             download(json, `idaq_chat_${Date.now()}.json`, 'application/json');
+        }
+
+        async function saveSessionToFirebase() {
+            if (sessionData.length === 0) { alert('No session data to save'); return; }
+
+            const userId = document.getElementById('userId').value.trim() || 'anonymous';
+            const format = document.getElementById('sessionFormat').value;
+            const status = document.getElementById('firebaseStatus');
+
+            status.textContent = 'Saving session to Firebase...';
+
+            const payload = {
+                userId,
+                format,
+                mode: simulation ? 'simulation' : 'live',
+                session: {
+                    startTime: sessionStart ? new Date(sessionStart).toISOString() : null,
+                    endTime: new Date().toISOString(),
+                    points: sessionData.length
+                },
+                data: sessionData
+            };
+
+            try {
+                const response = await fetch('/save-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    status.textContent = data.message || 'Session saved to Firebase';
+                } else {
+                    status.textContent = data.error || 'Unable to save session';
+                }
+            } catch (error) {
+                status.textContent = 'Connection error while saving to Firebase';
+            }
         }
 
         function download(content, filename, type) {
