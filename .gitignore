@@ -10,7 +10,6 @@ __pycache__/
 *.deb 
 # Distribution / packaging
 .Python
-datasheets/
 node_modules/
 build/
 develop-eggs/
