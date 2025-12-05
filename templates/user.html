@@ -18,8 +18,7 @@
             background-color: #f5f7fa;
             color: #2c3e50;
         }
-
-        /* Navigation */
+        
         nav {
             background-color: #2c3e50;
             padding: 1rem 2rem;
@@ -36,6 +35,12 @@
             letter-spacing: -0.5px;
         }
 
+        nav .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         nav .nav-links a {
             color: white;
             text-decoration: none;
@@ -44,12 +49,36 @@
             border-radius: 4px;
             transition: background-color 0.2s;
         }
-        
+
         nav .nav-links a:hover {
             background-color: rgba(255, 255, 255, 0.1);
         }
+
+        .user-badge {
+            background-color: rgba(255,255,255,0.1);
+            color: #e1e8ed;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-height: 32px;
+        }
+
+        .user-badge strong {
+            color: #fff;
+        }
+
+        .auth-btn {
+            padding: 0.5rem 0.85rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
         
-        /* Main Layout */
         .main-container {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -65,8 +94,7 @@
             padding: 1.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-
-        /* Monitoring Panel */
+        
         .panel-header {
             display: flex;
             justify-content: space-between;
@@ -93,8 +121,7 @@
             background-color: #f5f7fa;
             border-radius: 4px;
         }
-
-        /* Controls */
+        
         .controls {
             display: flex;
             gap: 0.5rem;
@@ -152,8 +179,7 @@
         .btn-secondary:hover:not(:disabled) {
             background-color: #56646f;
         }
-
-        /* Channel Selector */
+        
         .channel-selector {
             margin-bottom: 1.5rem;
         }
@@ -173,7 +199,7 @@
 
         .channel-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 0.75rem;
             padding: 1rem 0;
         }
@@ -220,51 +246,73 @@
             flex-shrink: 0;
         }
 
-        /* Chart */
+        .btn-set {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            background-color: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .btn-set:hover {
+            background-color: #1a91da;
+        }
+
+        .latest-values {
+            margin-bottom: 1.5rem;
+        }
+        
+        .latest-values h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+            color: #2c3e50;
+        }
+        
+        .values-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.5rem;
+        }
+        
+        .value-card {
+            background-color: #f5f7fa;
+            padding: 0.5rem;
+            border-radius: 6px;
+            border-left: 3px solid;
+        }
+        
+        .value-card.voltage { border-left-color: #ef5350; }
+        .value-card.current { border-left-color: #42a5f5; }
+        .value-card.temperature { border-left-color: #ffb300; }
+        
+        .value-card .label {
+            font-size: 0.7rem;
+            color: #657786;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+        
+        .value-card .value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .value-card .unit {
+            font-size: 0.75rem;
+            color: #657786;
+            margin-left: 0.25rem;
+        }
+        
         .chart-container {
             position: relative;
             height: 400px;
             margin-bottom: 1rem;
         }
-
-        .latest-section {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .latest-card {
-            border: 1px solid #e1e8ed;
-            border-radius: 8px;
-            background: #f9fbfd;
-            padding: 1rem;
-        }
-
-        .latest-card h3 {
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .latest-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-
-        .latest-table th,
-        .latest-table td {
-            padding: 0.35rem 0.25rem;
-            text-align: left;
-            border-bottom: 1px solid #e1e8ed;
-        }
-
-        .latest-table th {
-            color: #657786;
-            font-weight: 600;
-        }
-
-        /* Export Section */
+        
         .export-section {
             display: flex;
             align-items: center;
@@ -279,7 +327,6 @@
             margin-right: 0.5rem;
         }
         
-        /* Status Bar */
         .status-bar {
             padding: 0.75rem;
             background-color: #f5f7fa;
@@ -288,8 +335,7 @@
             color: #657786;
             margin-top: 1rem;
         }
-
-        /* Chat Panel */
+        
         .chat-header {
             display: flex;
             justify-content: space-between;
@@ -363,8 +409,7 @@
         input:checked+.toggle-slider:before {
             transform: translateX(20px);
         }
-
-        /* Upload Section */
+        
         .upload-section {
             display: none;
             background-color: #e8f5fa;
@@ -408,10 +453,9 @@
             font-size: 0.875rem;
             color: #657786;
         }
-
-        /* Messages */
+        
         #messages {
-            height: 450px;
+            height: 400px;
             overflow-y: auto;
             border: 1px solid #e1e8ed;
             border-radius: 6px;
@@ -467,9 +511,9 @@
         .message-content {
             font-size: 0.9375rem;
             line-height: 1.5;
+            white-space: pre-wrap;
         }
-
-        /* Input Group */
+        
         .input-group {
             display: flex;
             gap: 0.5rem;
@@ -488,8 +532,7 @@
             outline: none;
             border-color: #1da1f2;
         }
-
-        /* Responsive */
+        
         @media (max-width: 1200px) {
             .main-container {
                 grid-template-columns: 1fr;
@@ -502,13 +545,13 @@
     <nav>
         <div class="brand">iDAQ Diagnostics</div>
         <div class="nav-links">
+            <span id="userBadge" class="user-badge">Not signed in</span>
+            <button id="authButton" class="btn btn-primary auth-btn" type="button">Sign in with Google</button>
             <a href="/admin">Admin</a>
-            <a href="/logout">Logout</a>
         </div>
     </nav>
 
     <div class="main-container">
-        <!-- Monitoring Panel -->
         <div class="panel">
             <div class="panel-header">
                 <h1>Real-Time Monitoring</h1>
@@ -527,9 +570,14 @@
             </div>
 
             <details class="channel-selector">
-                <summary>Channel Selection</summary>
+                <summary>Channel Selection & Labels</summary>
                 <div class="channel-grid" id="channelGrid"></div>
             </details>
+
+            <div class="latest-values">
+                <h3>Latest Readings</h3>
+                <div class="values-grid" id="latestValuesGrid"></div>
+            </div>
 
             <div class="chart-container">
                 <canvas id="sensorChart"></canvas>
@@ -565,7 +613,6 @@
             <div class="status-bar" id="statusBar">Ready to start monitoring</div>
         </div>
 
-        <!-- Chat Panel -->
         <div class="panel">
             <div class="chat-header">
                 <h2>AI Assistant</h2>
@@ -597,12 +644,70 @@
         </div>
     </div>
 
-    <script>
-        // Google Identity state
-        let googleClientId = localStorage.getItem('googleClientId') || '';
-        let googleProfile = null;
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 
-        // Channel definitions
+        async function loadFirebaseConfig() {
+            const response = await fetch('/config/firebase');
+            if (!response.ok) {
+                throw new Error('Unable to load Firebase configuration');
+            }
+            return response.json();
+        }
+
+        async function initializeFirebase() {
+            try {
+                const config = await loadFirebaseConfig();
+                const firebaseApp = initializeApp(config);
+                const auth = getAuth(firebaseApp);
+                const provider = new GoogleAuthProvider();
+
+                const emitAuthChange = async (user) => {
+                    const idToken = user ? await user.getIdToken() : null;
+                    if (idToken) {
+                        localStorage.setItem('idaq_id_token', idToken);
+                    } else {
+                        localStorage.removeItem('idaq_id_token');
+                    }
+
+                    window.currentUser = user;
+                    window.currentIdToken = idToken;
+                    document.dispatchEvent(new CustomEvent('auth-changed', {
+                        detail: { user, idToken }
+                    }));
+                };
+
+                onAuthStateChanged(auth, emitAuthChange);
+
+                window.signInWithGoogle = async () => {
+                    await signInWithPopup(auth, provider);
+                };
+
+                window.signOutUser = async () => {
+                    await signOut(auth);
+                };
+            } catch (error) {
+                console.error('Firebase initialization failed', error);
+                firebaseEnabled = false;
+                currentIdToken = null;
+                updateUserBadge();
+                document.getElementById('chatStatus').textContent = 'Chat available without signing in';
+                document.dispatchEvent(new CustomEvent('auth-changed', {
+                    detail: { user: null, idToken: null }
+                }));
+            }
+        }
+
+        initializeFirebase();
+    </script>
+
+    <script>
+        let currentUser = null;
+        let currentIdToken = localStorage.getItem('idaq_id_token');
+        let sessionOwner = null;
+        let firebaseEnabled = true;
+
         const channels = [
             { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
             { id: 'V2', type: 'voltage', index: 1, color: '#e53935', baseLabel: 'V2', customName: '' },
@@ -621,7 +726,81 @@
         const channelState = {};
         channels.forEach(ch => channelState[ch.id] = true);
 
-        // Chart setup
+        let latestReadings = {
+            voltage: [0, 0, 0, 0],
+            current: [0, 0, 0, 0],
+            temperature: [0, 0, 0, 0]
+        };
+
+        function updateUserBadge() {
+            const badge = document.getElementById('userBadge');
+            const authButton = document.getElementById('authButton');
+
+            if (!firebaseEnabled) {
+                badge.textContent = 'Auth disabled';
+                badge.style.opacity = '0.85';
+                authButton.textContent = 'Sign-in unavailable';
+                authButton.className = 'btn btn-secondary auth-btn';
+                authButton.disabled = true;
+                sessionOwner = { uid: 'guest', email: null, name: 'Guest' };
+                return;
+            }
+
+            if (currentUser) {
+                const name = currentUser.displayName || currentUser.email || currentUser.uid;
+                badge.innerHTML = `Signed in as <strong>${name}</strong>`;
+                badge.style.opacity = '1';
+                authButton.textContent = 'Sign out';
+                authButton.className = 'btn btn-secondary auth-btn';
+                sessionOwner = {
+                    uid: currentUser.uid,
+                    email: currentUser.email,
+                    name,
+                };
+            } else {
+                badge.textContent = 'Not signed in';
+                badge.style.opacity = '0.85';
+                authButton.textContent = 'Sign in with Google';
+                authButton.className = 'btn btn-primary auth-btn';
+                sessionOwner = null;
+            }
+        }
+
+        function ensureAuthenticated(showAlert = true) {
+            if (!firebaseEnabled) {
+                return true;
+            }
+
+            if (!currentIdToken) {
+                if (showAlert) {
+                    alert('Please sign in with Google to continue.');
+                }
+                return false;
+            }
+            return true;
+        }
+
+        async function authFetch(url, options = {}) {
+            if (!ensureAuthenticated(false)) {
+                throw new Error('Not authenticated');
+            }
+
+            const headers = new Headers(options.headers || {});
+            if (firebaseEnabled && currentIdToken) {
+                headers.set('Authorization', `Bearer ${currentIdToken}`);
+            }
+
+            return fetch(url, { ...options, headers });
+        }
+
+        async function handleAuthClick() {
+            if (currentUser) {
+                await window.signOutUser?.();
+            } else {
+                await window.signInWithGoogle?.();
+            }
+        }
+
         const ctx = document.getElementById('sensorChart').getContext('2d');
         const datasets = channels.map(ch => ({
             label: ch.baseLabel,
@@ -642,13 +821,13 @@
                     legend: {
                         labels: {
                             filter: (item) => {
-                                const ch = channels.find(c => c.baseLabel === item.text);
+                                const ch = channels.find(c => c.baseLabel === item.text || item.text.startsWith(c.baseLabel));
                                 return ch && channelState[ch.id];
                             },
                             generateLabels: (chart) => {
                                 const original = Chart.defaults.plugins.legend.labels.generateLabels(chart);
                                 return original.map(label => {
-                                    const ch = channels.find(c => c.baseLabel === label.text);
+                                    const ch = channels.find(c => c.baseLabel === label.text || label.text.startsWith(c.baseLabel));
                                     if (ch && ch.customName.trim()) {
                                         label.text = `${ch.baseLabel} - ${ch.customName}`;
                                     }
@@ -661,7 +840,6 @@
             }
         });
 
-        // State
         let monitoring = false;
         let simulation = false;
         let monitorInterval = null;
@@ -673,7 +851,17 @@
         let ragMode = false;
         const MAX_POINTS = 100;
 
-        // Render channel checkboxes
+        document.addEventListener('auth-changed', (event) => {
+            currentUser = event.detail.user;
+            currentIdToken = event.detail.idToken;
+            updateUserBadge();
+
+            if (!currentIdToken && monitoring) {
+                stopMonitoring();
+                document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
+            }
+        });
+
         function renderChannels() {
             const grid = document.getElementById('channelGrid');
             grid.innerHTML = '';
@@ -700,14 +888,29 @@
                 nameInput.className = 'channel-name-input';
                 nameInput.placeholder = 'Custom name...';
                 nameInput.value = ch.customName;
-                nameInput.oninput = (e) => updateChannelName(ch.id, e.target.value);
-
+                nameInput.id = `input-${ch.id}`;
+                
+                const setBtn = document.createElement('button');
+                setBtn.textContent = 'Set';
+                setBtn.className = 'btn-set';
+                setBtn.onclick = () => setChannelName(ch.id);
+                
                 div.appendChild(checkbox);
                 div.appendChild(legend);
                 div.appendChild(baseLabel);
                 div.appendChild(nameInput);
+                div.appendChild(setBtn);
                 grid.appendChild(div);
             });
+        }
+
+        function setChannelName(id) {
+            const input = document.getElementById(`input-${id}`);
+            const ch = channels.find(c => c.id === id);
+            if (ch) {
+                ch.customName = input.value;
+                chart.update();
+            }
         }
 
         function toggleChannel(id) {
@@ -715,12 +918,32 @@
             chart.update();
         }
 
-        function updateChannelName(id, name) {
-            const ch = channels.find(c => c.id === id);
-            if (ch) {
-                ch.customName = name;
-                chart.update();
-            }
+        function renderLatestValues() {
+            const grid = document.getElementById('latestValuesGrid');
+            grid.innerHTML = '';
+            
+            channels.forEach(ch => {
+                const value = latestReadings[ch.type][ch.index];
+                const div = document.createElement('div');
+                div.className = `value-card ${ch.type}`;
+                
+                const label = document.createElement('div');
+                label.className = 'label';
+                label.textContent = ch.customName || ch.baseLabel;
+                
+                const valueSpan = document.createElement('span');
+                valueSpan.className = 'value';
+                valueSpan.textContent = value.toFixed(1);
+                
+                const unit = document.createElement('span');
+                unit.className = 'unit';
+                unit.textContent = ch.type === 'voltage' ? 'V' : ch.type === 'current' ? 'A' : '°C';
+                
+                div.appendChild(label);
+                div.appendChild(valueSpan);
+                div.appendChild(unit);
+                grid.appendChild(div);
+            });
         }
 
         function updateSessionInfo() {
@@ -736,6 +959,11 @@
 
         function startMonitoring() {
             if (monitoring) return;
+
+            if (!simulation && !ensureAuthenticated()) {
+                document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
+                return;
+            }
 
             monitoring = true;
             sessionStart = Date.now();
@@ -768,6 +996,12 @@
             const btn = document.getElementById('simBtn');
             btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
             btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
+
+            if (simulation) {
+                document.getElementById('statusBar').textContent = 'Simulation armed — press Start to generate virtual data';
+            } else {
+                document.getElementById('statusBar').textContent = 'Simulation disabled — live monitoring requires sign in';
+            }
         }
 
         function clearGraph() {
@@ -778,18 +1012,48 @@
             }
         }
 
+        function randomInRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function generateSimulatedReadings() {
+            const makeSeries = (base, spread) => Array.from(
+                { length: 4 },
+                () => parseFloat(randomInRange(base - spread, base + spread).toFixed(2))
+            );
+
+            return {
+                voltage: makeSeries(300, 15),
+                current: makeSeries(15, 4),
+                temperature: makeSeries(45, 20)
+            };
+        }
+
         async function fetchSensorData() {
             if (!monitoring) return;
-            
+
             try {
-                const response = await fetch('/sensor-data');
-                const data = await response.json();
+                const data = simulation
+                    ? generateSimulatedReadings()
+                    : await authFetch('/sensor-data').then(resp => resp.json());
+
+                latestReadings = {
+                    voltage: data.voltage,
+                    current: data.current,
+                    temperature: data.temperature
+                };
+                
+                renderLatestValues();
                 
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
-
+                const timestampLocal = timestamp.toLocaleString([], {
+                    hour12: false,
+                    timeZoneName: 'short'
+                });
+                
                 sessionData.push({
-                    timestamp: timestamp.toISOString(),
+                    timestamp: timestampLocal,
                     time: timeStr,
                     voltage: data.voltage,
                     current: data.current,
@@ -821,10 +1085,10 @@
             } catch (error) {
                 console.error('Sensor data error:', error);
                 stopMonitoring();
+                document.getElementById('statusBar').textContent = 'Sensor data error - check login or connection';
             }
         }
 
-        // Export functions
         function exportToCSV() {
             if (sessionData.length === 0) { alert('No data'); return; }
 
@@ -849,7 +1113,8 @@
                     startTime: new Date(sessionStart).toISOString(),
                     endTime: new Date().toISOString(),
                     mode: simulation ? 'simulation' : 'live',
-                    dataPoints: sessionData.length
+                    dataPoints: sessionData.length,
+                    owner: sessionOwner
                 },
                 data: sessionData
             }, null, 2);
@@ -872,7 +1137,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // Chat functions
         function toggleRagMode() {
             ragMode = document.getElementById('ragToggle').checked;
             const uploadSection = document.getElementById('uploadSection');
@@ -881,11 +1145,11 @@
             if (ragMode) {
                 uploadSection.classList.add('active');
                 input.placeholder = 'Ask about datasheets...';
-                addMessage('RAG mode enabled', false, true);
+                addMessage('RAG mode enabled. Upload a PDF to get started.', false, true);
             } else {
                 uploadSection.classList.remove('active');
                 input.placeholder = 'Ask a question...';
-                addMessage('Chat mode enabled', false, false);
+                addMessage('Chat mode enabled.', false, false);
             }
         }
 
@@ -893,6 +1157,11 @@
             const file = event.target.files[0];
             if (!file) return;
 
+            if (!ensureAuthenticated()) {
+                document.getElementById('uploadStatus').textContent = 'Please sign in first.';
+                return;
+            }
+            
             document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
             document.getElementById('uploadStatus').textContent = 'Uploading...';
 
@@ -900,7 +1169,7 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/upload-pdf', { method: 'POST', body: formData });
+                const response = await authFetch('/upload-pdf', { method: 'POST', body: formData });
                 const data = await response.json();
 
                 if (response.ok) {
@@ -910,7 +1179,7 @@
                     document.getElementById('uploadStatus').textContent = `Error: ${data.error}`;
                 }
             } catch (error) {
-                document.getElementById('uploadStatus').textContent = 'Upload failed';
+                document.getElementById('uploadStatus').textContent = 'Upload failed: ' + error.message;
             }
         }
 
@@ -936,7 +1205,9 @@
                 timestamp: new Date().toISOString(),
                 sender: isUser ? 'user' : 'assistant',
                 mode: isRag ? 'rag' : 'chat',
-                message: text
+                message: text,
+                userId: sessionOwner?.uid ?? null,
+                userEmail: sessionOwner?.email ?? null
             });
         }
 
@@ -979,6 +1250,11 @@
             const msg = input.value.trim();
             if (!msg) return;
 
+            if (!ensureAuthenticated()) {
+                document.getElementById('chatStatus').textContent = 'Sign in to chat';
+                return;
+            }
+
             addMessage(msg, true);
             input.value = '';
 
@@ -990,12 +1266,16 @@
             try {
                 const endpoint = ragMode ? '/ask-rag' : '/chat';
                 const key = ragMode ? 'question' : 'message';
-                const context = buildChatContext();
-
-                const response = await fetch(endpoint, {
+                const payload = {
+                    [key]: msg,
+                    context: sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null,
+                    latestReadings: latestReadings
+                };
+                
+                const response = await authFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ [key]: msg, context })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -1004,12 +1284,13 @@
                     addMessage(data.response, false, ragMode);
                     status.textContent = 'Ready';
                 } else {
-                    addMessage(`Error: ${data.response}`, false, ragMode);
+                    const errorText = data.response || data.error || data.detail || 'Unknown error';
+                    addMessage(`Error: ${errorText}`, false, ragMode);
                     status.textContent = 'Error';
                 }
             } catch (error) {
-                addMessage('Connection error. Is Ollama running?', false, ragMode);
-                status.textContent = 'Error';
+                addMessage('Connection or authentication error. Is Ollama running?', false, ragMode);
+                status.textContent = 'Error: ' + error.message;
             } finally {
                 sendBtn.disabled = false;
             }
@@ -1019,10 +1300,12 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Initialize
         window.addEventListener('load', () => {
             renderChannels();
+            renderLatestValues();
             addMessage('Hello! Ask me anything about diagnostics.', false, false);
+            document.getElementById('authButton').addEventListener('click', handleAuthClick);
+            updateUserBadge();
         });
     </script>
 </body>

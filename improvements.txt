@@ -6,8 +6,6 @@ Prompts with Graph Questions //to be incl
 
 Train datasets with API Key
 
-Center the Login
-
 Save session as run history for that individual account 
 
 Sign up as a user (firebase)
