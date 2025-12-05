@@ -159,7 +159,14 @@ class OllamaClient:
                 f"Failed to reach Ollama at {self.base_url}. Ensure 'ollama serve' is running."
             ) from exc
 
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            error_detail = response.text if response.text else str(exc)
+            raise OllamaNotRunningError(
+                f"Ollama returned error: {response.status_code} - {error_detail}"
+            ) from exc
+        
         return response.json()
 
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
