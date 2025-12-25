@@ -25,6 +25,7 @@ langserve[all]
 fastapi
 uvicorn
 firebase-admin
+openai>=1.57.0
 
 # Additional dependencies for PDF ingestion and vector search
 faiss-cpu
