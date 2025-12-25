@@ -36,6 +36,7 @@ The knowledge base JSON file should live next to this module at
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -57,6 +58,7 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:1b")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
 CLASSIFIER_PATH = BASE_DIR / "artifacts" / "local_fault_classifier.joblib"
 KNOWLEDGE_BASE_PATH = BASE_DIR / "local_knowledge_base.json"
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 
 class OllamaNotRunningError(RuntimeError):
@@ -187,6 +189,66 @@ class OllamaClient:
         return data.get("response", "").strip()
 
 
+class OpenAIClient:
+    """Thin wrapper around the OpenAI Chat Completions API.
+
+    The client is only activated when ``OPENAI_API_KEY`` is provided via
+    environment variables.  Calls are routed through the official SDK so the
+    OpenAI hosted model can be used as the higher‑capacity reasoning engine.
+    """
+
+    def __init__(self, api_key: Optional[str] = None, model: str = OPENAI_MODEL):
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.model = model
+        self.client = None
+
+        if self.api_key:
+            try:
+                from openai import OpenAI  # type: ignore
+
+                self.client = OpenAI(api_key=self.api_key)
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The 'openai' package is required for hosted model access. Add it to your environment."
+                ) from exc
+
+    @property
+    def configured(self) -> bool:
+        return self.client is not None
+
+    def chat(self, prompt: str, system: Optional[str] = None) -> str:
+        if not self.client:
+            raise RuntimeError("OPENAI_API_KEY is not configured. Add it to your .env file.")
+
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=0.2,
+        )
+        return response.choices[0].message.content or ""
+
+    def upload_training_json(self, payload: str, file_name: str = "idaq_training.json") -> str:
+        """Upload structured JSON to OpenAI for later fine‑tuning or retrieval.
+
+        The method is intentionally lightweight: it streams the JSON string into
+        an in‑memory buffer so callers do not have to manage temporary files.
+        """
+
+        if not self.client:
+            raise RuntimeError("OPENAI_API_KEY is not configured. Add it to your .env file.")
+
+        buffer = io.BytesIO(payload.encode("utf-8"))
+        buffer.name = file_name
+
+        uploaded = self.client.files.create(file=buffer, purpose="fine-tune")
+        return f"Uploaded training JSON to OpenAI (file id: {uploaded.id})."
+
+
 @dataclass
 class SensorSnapshot:
     """
@@ -229,10 +291,12 @@ class LocalDiagnosticsAgent:
         knowledge_base: Optional[LocalKnowledgeBase] = None,
         ollama_client: Optional[OllamaClient] = None,
         classifier_path: Path = CLASSIFIER_PATH,
+        openai_client: Optional[OpenAIClient] = None,
     ) -> None:
         # Lazy initialization of knowledge base and LLM client
         self.kb = knowledge_base or LocalKnowledgeBase()
         self.ollama = ollama_client or OllamaClient()
+        self.openai = openai_client or OpenAIClient()
         self.classifier_path = classifier_path
         self.classifier: Optional[RandomForestClassifier] = None
         self.feature_columns: List[str] = []
@@ -359,6 +423,8 @@ Sensor snapshot:
 
 Live summary: {summary}
 """
+        if self.openai.configured:
+            return self.openai.chat(prompt)
         return self.ollama.generate(prompt)
 
     # ------------------------------------------------------------------
@@ -374,7 +440,11 @@ Live summary: {summary}
                 from langchain_community.embeddings import HuggingFaceEmbeddings
 
                 embeddings = HuggingFaceEmbeddings()
-                self.vector_store = FAISS.load_local(str(self.vector_store_dir), embeddings)
+                self.vector_store = FAISS.load_local(
+                    str(self.vector_store_dir),
+                    embeddings,
+                    allow_dangerous_deserialization=True,
+                )
             except Exception as exc:
                 raise RuntimeError(f"Failed to load vector store: {exc}")
 
@@ -465,4 +535,87 @@ Context:
 Question: {question}
 
 Answer:"""
+        if self.openai.configured:
+            return self.openai.chat(prompt)
         return self.ollama.generate(prompt)
+
+    # ------------------------------------------------------------------
+    # Dual LLM orchestration
+    # ------------------------------------------------------------------
+    def respond_to_user(self, message: str, enhanced_context: Optional[str] = None) -> str:
+        """Use OpenAI as the primary reasoning model, falling back to Ollama.
+
+        The optional ``enhanced_context`` is appended to the user message to
+        keep the prompt lightweight while still grounding the model with the
+        most recent sensor information.
+        """
+
+        system_prompt = (
+            "You are the primary reasoning model for iDAQ. Provide concise,"
+            " technically accurate answers using the context provided."
+            " Prefer actionable steps over generalities."
+        )
+
+        final_message = message if not enhanced_context else f"{message}\n{enhanced_context}"
+
+        if self.openai.configured:
+            return self.openai.chat(final_message, system=system_prompt)
+        return self.ollama.generate(final_message, system=system_prompt)
+
+    # ------------------------------------------------------------------
+    # Training corpus preparation
+    # ------------------------------------------------------------------
+    def compile_training_json(self, fault_path: Path, normal_path: Path) -> str:
+        """Summarize uploaded datasets into a compact JSON blob using Ollama."""
+
+        if not fault_path.exists() or not normal_path.exists():
+            raise FileNotFoundError("Both fault.csv and normal.csv must be uploaded before compilation.")
+
+        fault_df = pd.read_csv(fault_path)
+        normal_df = pd.read_csv(normal_path)
+
+        schema = {
+            "columns": list(fault_df.columns),
+            "fault_rows": len(fault_df),
+            "normal_rows": len(normal_df),
+        }
+
+        sample_text = json.dumps(
+            {
+                "fault_sample": fault_df.head(5).to_dict(orient="records"),
+                "normal_sample": normal_df.head(5).to_dict(orient="records"),
+            },
+            indent=2,
+        )
+
+        prompt = f"""
+Convert the following dataset preview into a compact JSON training set.  Keep keys short,
+normalize numeric fields, and emit a top-level object with 'schema', 'fault_records' and
+'normal_records'.
+
+Schema: {json.dumps(schema, indent=2)}
+
+Preview samples:
+{sample_text}
+"""
+
+        compiled = self.ollama.generate(prompt)
+        return compiled
+
+    def push_training_to_openai(self, compiled_json: str) -> str:
+        """Send compiled training data to OpenAI or persist locally if unconfigured."""
+
+        artifacts_dir = BASE_DIR / "artifacts"
+        artifacts_dir.mkdir(exist_ok=True, parents=True)
+        preview_path = artifacts_dir / "openai_training_preview.json"
+        preview_path.write_text(compiled_json)
+
+        if not self.openai.configured:
+            return (
+                f"Saved compiled training data to {preview_path}. Add OPENAI_API_KEY to enable automatic upload."
+            )
+
+        try:
+            return self.openai.upload_training_json(compiled_json)
+        except Exception as exc:
+            return f"⚠️ Failed to upload training data to OpenAI: {exc}"

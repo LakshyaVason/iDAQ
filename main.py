@@ -381,7 +381,19 @@ async def train_models(request: Request):
             error_msg = f"⚠️ Error fitting anomaly baseline: {exc}"
             messages.append(error_msg)
             logger.error(error_msg)
-    
+
+    # Push structured training data to the hosted reasoning model
+    if fault_path.exists() and normal_path.exists():
+        try:
+            compiled_json = agent.compile_training_json(fault_path, normal_path)
+            upload_msg = agent.push_training_to_openai(compiled_json)
+            messages.append(upload_msg)
+            logger.info(upload_msg)
+        except Exception as exc:
+            error_msg = f"⚠️ Training data sync skipped: {exc}"
+            messages.append(error_msg)
+            logger.warning(error_msg)
+
     return {"messages": messages}
 
 
@@ -446,7 +458,7 @@ async def chat_endpoint(request: Request, user: dict = Depends(verify_firebase_t
         else:
             enhanced_message = message
         
-        response_text = agent.ollama.generate(enhanced_message)
+        response_text = agent.respond_to_user(enhanced_message)
         logger.info(f"LLM response generated ({len(response_text)} chars)")
         return {"response": response_text}
         
@@ -460,9 +472,7 @@ async def chat_endpoint(request: Request, user: dict = Depends(verify_firebase_t
         return JSONResponse({"response": error_msg}, status_code=500)
 
 
-@app.post("/ask-rag")
-async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token)):
-    """Query the RAG system. Requires authentication."""
+async def _process_rag(request: Request, user: dict) -> JSONResponse:
     try:
         data = await request.json()
         question: Optional[str] = data.get("question") or data.get("message")
@@ -484,9 +494,21 @@ async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token))
         error_msg = f"RAG error: {str(exc)}"
         logger.error(error_msg, exc_info=True)
         return JSONResponse(
-            {"response": error_msg}, 
+            {"response": error_msg},
             status_code=500
         )
+
+
+@app.post("/ask-rag")
+async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token)):
+    """Query the RAG system. Requires authentication."""
+    return await _process_rag(request, user)
+
+
+@app.post("/ask_rag")
+async def ask_rag_alias(request: Request, user: dict = Depends(verify_firebase_token)):
+    """Alias endpoint for RAG to avoid 404s from clients using underscores."""
+    return await _process_rag(request, user)
 
 
 @app.exception_handler(404)

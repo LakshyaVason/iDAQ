@@ -807,7 +807,8 @@
             data: [],
             borderColor: ch.color,
             backgroundColor: ch.color + '33',
-            tension: 0.4
+            tension: 0.4,
+            yAxisID: ch.type === 'current' ? 'currentAxis' : 'mainAxis'
         }));
 
         const chart = new Chart(ctx, {
@@ -816,7 +817,27 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: { y: { beginAtZero: true } },
+                scales: {
+                    mainAxis: {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Voltage / Temperature'
+                        }
+                    },
+                    currentAxis: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        grid: { drawOnChartArea: false },
+                        title: {
+                            display: true,
+                            text: 'Current'
+                        }
+                    }
+                },
                 plugins: {
                     legend: {
                         labels: {

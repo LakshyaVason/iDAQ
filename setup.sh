@@ -19,13 +19,22 @@ if ! command_exists python; then
   exit 1
 fi
 
+if ! command_exists pip; then
+  echo "pip is required to install Python dependencies"
+  exit 1
+fi
+
 if ! command_exists ollama; then
   echo "Ollama CLI not found."
   echo "Install Ollama from https://ollama.com"
   exit 1
 fi
 
-echo "Python and Ollama detected"
+echo "Python, pip, and Ollama detected"
+
+echo "Installing Python dependencies..."
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 
 echo "Checking Ollama service..."
 if ! curl -sf http://127.0.0.1:11434/ >/dev/null 2>&1; then
