@@ -5,7 +5,11 @@ __pycache__/
 
 # C extensions
 *.so
-./serviceAccountKey.json
+
+# Credentials and secrets
+serviceAccountKey.json
+.env
+firebase-key.json
 
 
 # Distribution / packaging
