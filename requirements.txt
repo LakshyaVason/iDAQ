@@ -1,4 +1,5 @@
 # Core ML / LLM dependencies
+openai>=1.0.0
 transformers>=4.44.0
 accelerate>=0.33.0
 sentencepiece
@@ -15,20 +16,26 @@ numpy<2
 # HTTP and templating utilities
 requests
 jinja2
-python-multipart  # Needed for FastAPI file uploads
+python-multipart
 
-# LangChain ecosystem and serving
+# LangChain ecosystem
 langchain
 langchain-community
+langchain-openai
 langserve[all]
 
+# FastAPI server
 fastapi
 uvicorn
 firebase-admin
 
-# Additional dependencies for PDF ingestion and vector search
+# Vector store and embeddings
 faiss-cpu
 langchain-text-splitters
+sentence-transformers
 
-# Optional: Python wrapper for Ollama (not required if using direct HTTP)
+# Optional: Ollama for local data compilation
 ollama
+
+# Pinecone (alternative to FAISS for production)
+# pinecone-client

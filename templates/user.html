@@ -583,26 +583,6 @@
                 <canvas id="sensorChart"></canvas>
             </div>
 
-            <div class="latest-section" id="latestCards">
-                <div class="latest-card">
-                    <h3>Latest Readings</h3>
-                    <table class="latest-table">
-                        <thead>
-                            <tr>
-                                <th>Channel</th>
-                                <th>Value</th>
-                            </tr>
-                        </thead>
-                        <tbody id="latestTableBody">
-                            <tr>
-                                <td colspan="2">No data yet</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="status-bar" id="latestTimestamp">Waiting for data...</div>
-                </div>
-            </div>
-
             <div class="export-section">
                 <label>Export:</label>
                 <button class="btn btn-primary" onclick="exportToCSV()">CSV</button>
@@ -689,8 +669,8 @@
                 };
             } catch (error) {
                 console.error('Firebase initialization failed', error);
-                firebaseEnabled = false;
-                currentIdToken = null;
+                window.firebaseEnabled = false;
+                window.currentIdToken = null;
                 updateUserBadge();
                 document.getElementById('chatStatus').textContent = 'Chat available without signing in';
                 document.dispatchEvent(new CustomEvent('auth-changed', {
@@ -807,7 +787,8 @@
             data: [],
             borderColor: ch.color,
             backgroundColor: ch.color + '33',
-            tension: 0.4
+            tension: 0.4,
+            yAxisID: ch.type === 'current' ? 'y1' : 'y'
         }));
 
         const chart = new Chart(ctx, {
@@ -816,7 +797,35 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                scales: { y: { beginAtZero: true } },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Voltage (V) / Temperature (°C)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Current (A)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    },
+                },
                 plugins: {
                     legend: {
                         labels: {
@@ -846,7 +855,6 @@
         let sessionStart = null;
         let sessionInterval = null;
         let sessionData = [];
-        let sessionLookup = {};
         let chatHistory = [];
         let ragMode = false;
         const MAX_POINTS = 100;
@@ -1059,11 +1067,6 @@
                     current: data.current,
                     temperature: data.temperature
                 });
-                sessionLookup[timeStr] = {
-                    voltage: data.voltage,
-                    current: data.current,
-                    temperature: data.temperature,
-                };
 
                 chart.data.labels.push(timeStr);
                 channels.forEach((ch, idx) => {
@@ -1077,16 +1080,20 @@
                 }
 
                 chart.update();
-                updateLatestTable(data, timeStr);
-
-                const mode = simulation ? 'SIM' : 'LIVE';
-                document.getElementById('statusBar').textContent =
-                    `${mode} | ${timeStr} | V1: ${data.voltage[0]}V C1: ${data.current[0]}A T1: ${data.temperature[0]}°C`;
+                updateStatusBar();
             } catch (error) {
                 console.error('Sensor data error:', error);
                 stopMonitoring();
                 document.getElementById('statusBar').textContent = 'Sensor data error - check login or connection';
             }
+        }
+
+        function updateStatusBar() {
+            if (!monitoring) return;
+            const mode = simulation ? 'SIM' : 'LIVE';
+            const latest = latestReadings;
+            document.getElementById('statusBar').textContent =
+                `${mode} | V1: ${latest.voltage[0]}V C1: ${latest.current[0]}A T1: ${latest.temperature[0]}°C`;
         }
 
         function exportToCSV() {
@@ -1119,6 +1126,42 @@
                 data: sessionData
             }, null, 2);
             download(json, `idaq_${Date.now()}.json`, 'application/json');
+            
+            // Also save to Firebase if authenticated
+            if (currentIdToken && sessionOwner && sessionOwner.uid !== 'guest') {
+                saveSessionToFirebase();
+            }
+        }
+
+        async function saveSessionToFirebase() {
+            if (!currentIdToken || !sessionOwner || sessionOwner.uid === 'guest') {
+                return;
+            }
+            
+            try {
+                const payload = {
+                    sessionData: sessionData,
+                    chatHistory: chatHistory,
+                    startTime: new Date(sessionStart).toISOString(),
+                    endTime: new Date().toISOString(),
+                    mode: simulation ? 'simulation' : 'live'
+                };
+                
+                const response = await authFetch('/save-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    document.getElementById('statusBar').textContent = 'Session saved to your account';
+                    setTimeout(() => {
+                        updateStatusBar();
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Session save error:', error);
+            }
         }
 
         function exportChat() {
@@ -1211,40 +1254,6 @@
             });
         }
 
-        function buildChatContext() {
-            if (sessionData.length === 0) return null;
-
-            const latest = sessionData[sessionData.length - 1];
-
-            // Create detailed lookup with channel labels
-            const detailedLog = sessionData.slice(-200).map(entry => {
-                const channelData = {};
-                channels.forEach(ch => {
-                    const label = ch.customName.trim() || ch.baseLabel;
-                    channelData[label] = entry[ch.type]?.[ch.index];
-                });
-                return {
-                    time: entry.time,
-                    timestamp: entry.timestamp,
-                    ...channelData
-                };
-            });
-
-            return {
-                latest,
-                detailedLog,
-                instruction: `Use detailedLog to find readings by time. Each entry has 'time' (HH:MM:SS) and channel values. Channel names: ${channels.map(ch => ch.customName.trim() || ch.baseLabel).join(', ')}. When asked about "Channel X Voltage at HH:MM:SS", find the entry with matching 'time' field.`
-            };
-        }
-
-        return {
-            latest,
-            searchableLog,
-            lookupByTime: sessionLookup,
-            note: 'Use exact time matches in searchableLog to answer timestamp questions.',
-        };
-        
-
         async function sendMessage() {
             const input = document.getElementById('userInput');
             const msg = input.value.trim();
@@ -1268,7 +1277,7 @@
                 const key = ragMode ? 'question' : 'message';
                 const payload = {
                     [key]: msg,
-                    context: sessionData.length > 0 ? { recentReadings: sessionData.slice(-5) } : null,
+                    context: sessionData.length > 0 ? sessionData.slice(-10) : null,
                     latestReadings: latestReadings
                 };
                 
@@ -1289,7 +1298,7 @@
                     status.textContent = 'Error';
                 }
             } catch (error) {
-                addMessage('Connection or authentication error. Is Ollama running?', false, ragMode);
+                addMessage('Connection or authentication error. Check your connection.', false, ragMode);
                 status.textContent = 'Error: ' + error.message;
             } finally {
                 sendBtn.disabled = false;
@@ -1303,7 +1312,7 @@
         window.addEventListener('load', () => {
             renderChannels();
             renderLatestValues();
-            addMessage('Hello! Ask me anything about diagnostics.', false, false);
+            addMessage('Hello! Ask me anything about diagnostics or power electronics.', false, false);
             document.getElementById('authButton').addEventListener('click', handleAuthClick);
             updateUserBadge();
         });
