@@ -1,11 +1,9 @@
-Test RAG // to be incl
-Screenshots of PE Prompts + UI //to be incl
-Prompts with Graph Questions //to be incl
+Need to work on Save sessions on firebase page and that should pretty much be it for winterbreak progress. 
+
+Oh and also I need to make sure I am using an existing Dataset from Zeid
+
+Test it on Microcontroller and configure GPIOs (next semester)
+
+Train datasets with API Key (next semester)
 
 
-
-Train datasets with API Key
-
-Save session as run history for that individual account 
-
-Sign up as a user (firebase)
