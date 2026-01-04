@@ -565,6 +565,8 @@
                 <button id="startBtn" class="btn btn-success" onclick="startMonitoring()">Start</button>
                 <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()"
                     style="display:none;">Stop</button>
+                <button id="saveBtn" class="btn btn-primary" onclick="saveCurrentSession()" 
+                    style="display:none;">💾 Save Session</button>
                 <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Simulation Mode</button>
                 <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
             </div>
@@ -979,6 +981,7 @@
             
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('saveBtn').style.display = 'inline-block';
             document.getElementById('simBtn').disabled = true;
             
             monitorInterval = setInterval(fetchSensorData, 2000);
@@ -995,8 +998,30 @@
             
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('saveBtn').style.display = 'none';
             document.getElementById('simBtn').disabled = false;
             document.getElementById('statusBar').textContent = 'Monitoring stopped';
+        }
+
+        async function saveCurrentSession() {
+            if (!currentIdToken || !sessionOwner || sessionOwner.uid === 'guest') {
+                alert('Please sign in to save sessions');
+                return;
+            }
+            
+            if (sessionData.length === 0) {
+                alert('No data to save');
+                return;
+            }
+            
+            document.getElementById('saveBtn').disabled = true;
+            document.getElementById('saveBtn').textContent = '💾 Saving...';
+            
+            await saveSessionToFirebase();
+            
+            document.getElementById('saveBtn').disabled = false;
+            document.getElementById('saveBtn').textContent = '💾 Save Session';
+            alert('Session saved! View it in My Sessions');
         }
 
         function toggleSimulation() {
@@ -1275,10 +1300,25 @@
             try {
                 const endpoint = ragMode ? '/ask-rag' : '/chat';
                 const key = ragMode ? 'question' : 'message';
+                
+                // Build detailed context with time indexing
+                const contextData = sessionData.slice(-20).map(d => ({
+                    time: d.time,
+                    timestamp: d.timestamp,
+                    voltage: d.voltage,
+                    current: d.current,
+                    temperature: d.temperature
+                }));
+                
                 const payload = {
                     [key]: msg,
-                    context: sessionData.length > 0 ? sessionData.slice(-10) : null,
-                    latestReadings: latestReadings
+                    context: contextData,
+                    latestReadings: latestReadings,
+                    sessionInfo: {
+                        dataPoints: sessionData.length,
+                        startTime: sessionStart ? new Date(sessionStart).toISOString() : null,
+                        mode: simulation ? 'simulation' : 'live'
+                    }
                 };
                 
                 const response = await authFetch(endpoint, {

@@ -37,5 +37,8 @@ sentence-transformers
 # Optional: Ollama for local data compilation
 ollama
 
-# Pinecone (alternative to FAISS for production)
-# pinecone-client
+
+
+# PDF processing
+pypdf
+pypdf2

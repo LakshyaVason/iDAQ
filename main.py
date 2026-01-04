@@ -394,14 +394,29 @@ async def chat_endpoint(request: Request, user: dict = Depends(verify_firebase_t
         message = data.get("message")
         session_data = data.get("context")
         latest_readings = data.get("latestReadings")
+        session_info = data.get("sessionInfo", {})
         
         if not message:
             return JSONResponse({"response": "Please provide a message"}, status_code=400)
         
         logger.info(f"Chat from {user.get('email') or user.get('uid')}: {message[:50]}...")
         
+        # Enhanced context for time-based queries
+        context_note = ""
+        if session_data:
+            context_note = f"""
+You have access to sensor data with timestamps. When asked about specific times:
+- Look for the 'time' field in the format HH:MM:SS
+- Match the time in the user's question to the 'time' field in the data
+- Each data point has: time, timestamp, voltage (array), current (array), temperature (array)
+
+Example: If asked "What was the voltage at 14:30:15?", find the entry with time="14:30:15" and report its voltage values.
+
+Current session has {len(session_data)} data points spanning from {session_data[0]['time'] if session_data else 'N/A'} to {session_data[-1]['time'] if session_data else 'N/A'}.
+"""
+        
         response_text = agent.chat(
-            message=message,
+            message=message + context_note,
             session_data=session_data,
             latest_readings=latest_readings
         )
@@ -426,6 +441,12 @@ async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token))
             return JSONResponse({"response": "Please provide a question"}, status_code=400)
         
         logger.info(f"RAG query from {user.get('email') or user.get('uid')}: {question[:50]}...")
+        logger.info(f"Vector store status: {agent.vector_store is not None}")
+        
+        # Check if vector store exists
+        if agent.vector_store is None:
+            logger.warning("Vector store is None - no PDFs uploaded yet")
+            return {"response": "⚠️ No datasheets uploaded yet. Please:\n1. Make sure you're in RAG mode\n2. Upload a PDF using the file selector\n3. Wait for the 'Ingested X chunks' message\n4. Then try your question again"}
         
         answer = agent.query_rag(question, session_data)
         
@@ -434,7 +455,7 @@ async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token))
     
     except Exception as e:
         logger.error(f"RAG error: {e}", exc_info=True)
-        return JSONResponse({"response": f"Error: {str(e)}"}, status_code=500)
+        return JSONResponse({"response": f"❌ RAG Error: {str(e)}\n\nMake sure you:\n1. Uploaded a PDF in RAG mode\n2. Waited for ingestion confirmation\n3. Are asking about content in the PDF"}, status_code=500)
 
 
 @app.post("/save-session")
@@ -461,6 +482,12 @@ async def save_session(request: Request, user: dict = Depends(verify_firebase_to
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.get("/sessions", response_class=HTMLResponse)
+async def sessions_page():
+    """Sessions history page."""
+    return HTMLResponse(read_template("sessions.html"))
+
+
 @app.get("/user-sessions")
 async def user_sessions(user: dict = Depends(verify_firebase_token)):
     """Get user's session history."""
@@ -469,6 +496,22 @@ async def user_sessions(user: dict = Depends(verify_firebase_token)):
         return {"sessions": sessions}
     except Exception as e:
         logger.error(f"Session retrieval error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/delete-session/{session_id}")
+async def delete_session(session_id: str, user: dict = Depends(verify_firebase_token)):
+    """Delete a user session."""
+    if not db:
+        return JSONResponse({"error": "Firestore not available"}, status_code=503)
+    
+    try:
+        doc_ref = db.collection("sessions").document(user.get("uid")).collection("history").document(session_id)
+        doc_ref.delete()
+        logger.info(f"Session {session_id} deleted for user {user.get('uid')}")
+        return {"message": "Session deleted successfully"}
+    except Exception as e:
+        logger.error(f"Session deletion error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
