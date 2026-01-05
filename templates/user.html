@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="favicon.jpg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iDAQ User Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -18,7 +19,7 @@
             background-color: #f5f7fa;
             color: #2c3e50;
         }
-        
+
         nav {
             background-color: #2c3e50;
             padding: 1rem 2rem;
@@ -41,11 +42,16 @@
             gap: 0.5rem;
         }
 
+        nav .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         nav .nav-links a {
             color: white;
             text-decoration: none;
             padding: 0.5rem 1rem;
-            margin-left: 0.5rem;
             border-radius: 4px;
             transition: background-color 0.2s;
         }
@@ -55,7 +61,7 @@
         }
 
         .user-badge {
-            background-color: rgba(255,255,255,0.1);
+            background-color: rgba(255, 255, 255, 0.1);
             color: #e1e8ed;
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
@@ -78,7 +84,7 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        
+
         .main-container {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -94,7 +100,7 @@
             padding: 1.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .panel-header {
             display: flex;
             justify-content: space-between;
@@ -121,7 +127,7 @@
             background-color: #f5f7fa;
             border-radius: 4px;
         }
-        
+
         .controls {
             display: flex;
             gap: 0.5rem;
@@ -179,7 +185,7 @@
         .btn-secondary:hover:not(:disabled) {
             background-color: #56646f;
         }
-        
+
         .channel-selector {
             margin-bottom: 1.5rem;
         }
@@ -256,7 +262,7 @@
             cursor: pointer;
             flex-shrink: 0;
         }
-        
+
         .btn-set:hover {
             background-color: #1a91da;
         }
@@ -264,55 +270,63 @@
         .latest-values {
             margin-bottom: 1.5rem;
         }
-        
+
         .latest-values h3 {
             font-size: 1rem;
             margin-bottom: 0.75rem;
             color: #2c3e50;
         }
-        
+
         .values-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
             gap: 0.5rem;
         }
-        
+
         .value-card {
             background-color: #f5f7fa;
             padding: 0.5rem;
             border-radius: 6px;
             border-left: 3px solid;
         }
-        
-        .value-card.voltage { border-left-color: #ef5350; }
-        .value-card.current { border-left-color: #42a5f5; }
-        .value-card.temperature { border-left-color: #ffb300; }
-        
+
+        .value-card.voltage {
+            border-left-color: #ef5350;
+        }
+
+        .value-card.current {
+            border-left-color: #42a5f5;
+        }
+
+        .value-card.temperature {
+            border-left-color: #ffb300;
+        }
+
         .value-card .label {
             font-size: 0.7rem;
             color: #657786;
             font-weight: 500;
             margin-bottom: 0.25rem;
         }
-        
+
         .value-card .value {
             font-size: 1.1rem;
             font-weight: 600;
             color: #2c3e50;
         }
-        
+
         .value-card .unit {
             font-size: 0.75rem;
             color: #657786;
             margin-left: 0.25rem;
         }
-        
+
         .chart-container {
             position: relative;
             height: 400px;
             margin-bottom: 1rem;
         }
-        
+
         .export-section {
             display: flex;
             align-items: center;
@@ -321,12 +335,12 @@
             margin-top: 1rem;
             border-top: 1px solid #e1e8ed;
         }
-        
+
         .export-section label {
             font-weight: 500;
             margin-right: 0.5rem;
         }
-        
+
         .status-bar {
             padding: 0.75rem;
             background-color: #f5f7fa;
@@ -335,7 +349,7 @@
             color: #657786;
             margin-top: 1rem;
         }
-        
+
         .chat-header {
             display: flex;
             justify-content: space-between;
@@ -409,7 +423,7 @@
         input:checked+.toggle-slider:before {
             transform: translateX(20px);
         }
-        
+
         .upload-section {
             display: none;
             background-color: #e8f5fa;
@@ -453,7 +467,7 @@
             font-size: 0.875rem;
             color: #657786;
         }
-        
+
         #messages {
             height: 400px;
             overflow-y: auto;
@@ -513,7 +527,7 @@
             line-height: 1.5;
             white-space: pre-wrap;
         }
-        
+
         .input-group {
             display: flex;
             gap: 0.5rem;
@@ -532,7 +546,7 @@
             outline: none;
             border-color: #1da1f2;
         }
-        
+
         @media (max-width: 1200px) {
             .main-container {
                 grid-template-columns: 1fr;
@@ -548,6 +562,7 @@
             <span id="userBadge" class="user-badge">Not signed in</span>
             <button id="authButton" class="btn btn-primary auth-btn" type="button">Sign in with Google</button>
             <a href="/admin">Admin</a>
+            <a href="/sessions">My Sessions</a>
         </div>
     </nav>
 
@@ -565,9 +580,9 @@
                 <button id="startBtn" class="btn btn-success" onclick="startMonitoring()">Start</button>
                 <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()"
                     style="display:none;">Stop</button>
-                <button id="saveBtn" class="btn btn-primary" onclick="saveCurrentSession()" 
-                    style="display:none;">💾 Save Session</button>
-                <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Simulation Mode</button>
+                <button id="saveBtn" class="btn btn-primary" onclick="saveCurrentSession()" style="display:none;">Save
+                    Session</button>
+                <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Demo Mode</button>
                 <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
             </div>
 
@@ -899,12 +914,12 @@
                 nameInput.placeholder = 'Custom name...';
                 nameInput.value = ch.customName;
                 nameInput.id = `input-${ch.id}`;
-                
+
                 const setBtn = document.createElement('button');
                 setBtn.textContent = 'Set';
                 setBtn.className = 'btn-set';
                 setBtn.onclick = () => setChannelName(ch.id);
-                
+
                 div.appendChild(checkbox);
                 div.appendChild(legend);
                 div.appendChild(baseLabel);
@@ -931,24 +946,24 @@
         function renderLatestValues() {
             const grid = document.getElementById('latestValuesGrid');
             grid.innerHTML = '';
-            
+
             channels.forEach(ch => {
                 const value = latestReadings[ch.type][ch.index];
                 const div = document.createElement('div');
                 div.className = `value-card ${ch.type}`;
-                
+
                 const label = document.createElement('div');
                 label.className = 'label';
                 label.textContent = ch.customName || ch.baseLabel;
-                
+
                 const valueSpan = document.createElement('span');
                 valueSpan.className = 'value';
                 valueSpan.textContent = value.toFixed(1);
-                
+
                 const unit = document.createElement('span');
                 unit.className = 'unit';
                 unit.textContent = ch.type === 'voltage' ? 'V' : ch.type === 'current' ? 'A' : '°C';
-                
+
                 div.appendChild(label);
                 div.appendChild(valueSpan);
                 div.appendChild(unit);
@@ -961,29 +976,26 @@
             const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
             const minutes = Math.floor(elapsed / 60);
             const seconds = elapsed % 60;
-            document.getElementById('sessionTime').textContent = 
+            document.getElementById('sessionTime').textContent =
                 `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            document.getElementById('sessionPoints').textContent = 
+            document.getElementById('sessionPoints').textContent =
                 `${sessionData.length} points`;
         }
 
         function startMonitoring() {
             if (monitoring) return;
-
+            // Simulation mode doesn't require auth
             if (!simulation && !ensureAuthenticated()) {
-                document.getElementById('statusBar').textContent = 'Sign in to start monitoring';
+                document.getElementById('statusBar').textContent = 'Sign in to start live monitoring';
                 return;
             }
-
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
-            
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
-            document.getElementById('saveBtn').style.display = 'inline-block';
+            document.getElementById('saveBtn').style.display = 'none'; // Hide save button when starting
             document.getElementById('simBtn').disabled = true;
-            
             monitorInterval = setInterval(fetchSensorData, 2000);
             sessionInterval = setInterval(updateSessionInfo, 1000);
             fetchSensorData();
@@ -991,16 +1003,18 @@
 
         function stopMonitoring() {
             if (!monitoring) return;
-
             monitoring = false;
             clearInterval(monitorInterval);
             clearInterval(sessionInterval);
-            
             document.getElementById('startBtn').style.display = 'inline-block';
             document.getElementById('stopBtn').style.display = 'none';
-            document.getElementById('saveBtn').style.display = 'none';
             document.getElementById('simBtn').disabled = false;
             document.getElementById('statusBar').textContent = 'Monitoring stopped';
+
+            // Show Save Session button only if there's data to save
+            if (sessionData.length > 0) {
+                document.getElementById('saveBtn').style.display = 'inline-block';
+            }
         }
 
         async function saveCurrentSession() {
@@ -1008,17 +1022,17 @@
                 alert('Please sign in to save sessions');
                 return;
             }
-            
+
             if (sessionData.length === 0) {
                 alert('No data to save');
                 return;
             }
-            
+
             document.getElementById('saveBtn').disabled = true;
             document.getElementById('saveBtn').textContent = '💾 Saving...';
-            
+
             await saveSessionToFirebase();
-            
+
             document.getElementById('saveBtn').disabled = false;
             document.getElementById('saveBtn').textContent = '💾 Save Session';
             alert('Session saved! View it in My Sessions');
@@ -1027,13 +1041,15 @@
         function toggleSimulation() {
             simulation = !simulation;
             const btn = document.getElementById('simBtn');
-            btn.textContent = simulation ? 'Simulation ON' : 'Simulation Mode';
-            btn.className = simulation ? 'btn btn-success' : 'btn btn-secondary';
 
             if (simulation) {
-                document.getElementById('statusBar').textContent = 'Simulation armed — press Start to generate virtual data';
+                btn.textContent = 'Demo Mode ON';
+                btn.className = 'btn btn-success';
+                document.getElementById('statusBar').textContent = 'Demo Mode: Will show real lab data from CSV';
             } else {
-                document.getElementById('statusBar').textContent = 'Simulation disabled — live monitoring requires sign in';
+                btn.textContent = 'Demo Mode';
+                btn.className = 'btn btn-secondary';
+                document.getElementById('statusBar').textContent = 'Live Mode: Requires sign-in';
             }
         }
 
@@ -1066,25 +1082,34 @@
             if (!monitoring) return;
 
             try {
-                const data = simulation
-                    ? generateSimulatedReadings()
-                    : await authFetch('/sensor-data').then(resp => resp.json());
+                // In simulation mode, use CSV data without auth
+                // In live mode, fetch from server with auth
+                let data;
+
+                if (simulation) {
+                    // Simulation mode: fetch CSV data without requiring auth
+                    const response = await fetch('/sensor-data');
+                    data = await response.json();
+                } else {
+                    // Live mode: requires authentication
+                    data = await authFetch('/sensor-data').then(resp => resp.json());
+                }
 
                 latestReadings = {
                     voltage: data.voltage,
                     current: data.current,
                     temperature: data.temperature
                 };
-                
+
                 renderLatestValues();
-                
+
                 const timestamp = new Date();
                 const timeStr = timestamp.toLocaleTimeString();
                 const timestampLocal = timestamp.toLocaleString([], {
                     hour12: false,
                     timeZoneName: 'short'
                 });
-                
+
                 sessionData.push({
                     timestamp: timestampLocal,
                     time: timeStr,
@@ -1109,16 +1134,19 @@
             } catch (error) {
                 console.error('Sensor data error:', error);
                 stopMonitoring();
-                document.getElementById('statusBar').textContent = 'Sensor data error - check login or connection';
+                document.getElementById('statusBar').textContent = 'Sensor data error - check connection';
             }
         }
 
         function updateStatusBar() {
             if (!monitoring) return;
-            const mode = simulation ? 'SIM' : 'LIVE';
+            const mode = simulation ? 'DEMO' : 'LIVE';
             const latest = latestReadings;
+            const v1Label = channels[0].customName || 'V1';
+            const c1Label = channels[4].customName || 'C1';
+            const t1Label = channels[8].customName || 'T1';
             document.getElementById('statusBar').textContent =
-                `${mode} | V1: ${latest.voltage[0]}V C1: ${latest.current[0]}A T1: ${latest.temperature[0]}°C`;
+                `${mode} | ${v1Label}: ${latest.voltage[0]}V ${c1Label}: ${latest.current[0]}A ${t1Label}: ${latest.temperature[0]}°C`;
         }
 
         function exportToCSV() {
@@ -1151,7 +1179,7 @@
                 data: sessionData
             }, null, 2);
             download(json, `idaq_${Date.now()}.json`, 'application/json');
-            
+
             // Also save to Firebase if authenticated
             if (currentIdToken && sessionOwner && sessionOwner.uid !== 'guest') {
                 saveSessionToFirebase();
@@ -1162,7 +1190,7 @@
             if (!currentIdToken || !sessionOwner || sessionOwner.uid === 'guest') {
                 return;
             }
-            
+
             try {
                 const payload = {
                     sessionData: sessionData,
@@ -1171,13 +1199,13 @@
                     endTime: new Date().toISOString(),
                     mode: simulation ? 'simulation' : 'live'
                 };
-                
+
                 const response = await authFetch('/save-session', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                
+
                 if (response.ok) {
                     document.getElementById('statusBar').textContent = 'Session saved to your account';
                     setTimeout(() => {
@@ -1229,7 +1257,7 @@
                 document.getElementById('uploadStatus').textContent = 'Please sign in first.';
                 return;
             }
-            
+
             document.getElementById('fileInfo').textContent = `Selected: ${file.name}`;
             document.getElementById('uploadStatus').textContent = 'Uploading...';
 
@@ -1300,7 +1328,7 @@
             try {
                 const endpoint = ragMode ? '/ask-rag' : '/chat';
                 const key = ragMode ? 'question' : 'message';
-                
+
                 // Build detailed context with time indexing
                 const contextData = sessionData.slice(-20).map(d => ({
                     time: d.time,
@@ -1309,7 +1337,7 @@
                     current: d.current,
                     temperature: d.temperature
                 }));
-                
+
                 const payload = {
                     [key]: msg,
                     context: contextData,
@@ -1320,7 +1348,7 @@
                         mode: simulation ? 'simulation' : 'live'
                     }
                 };
-                
+
                 const response = await authFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

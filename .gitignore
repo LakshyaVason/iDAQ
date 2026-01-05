@@ -11,6 +11,9 @@ serviceAccountKey.json
 .env
 firebase-key.json
 
+#Measurement File
+VinIinMOSFETVdsSCRVds_240_ALL.csv
+
 
 # Distribution / packaging
 *.deb 

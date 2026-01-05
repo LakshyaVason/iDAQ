@@ -21,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_agent import DiagnosticsAgent
 
+from live_data_loader import initialize_data_loader, get_live_data, get_loader_info
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,9 @@ DATASHEETS_DIR = BASE_DIR / "datasheets"
 
 DATASHEETS_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+# Initialize live data loader
+LIVE_DATA_AVAILABLE = initialize_data_loader()
 
 # Firebase setup
 firebase_app: Optional[firebase_admin.App] = None
@@ -199,6 +204,14 @@ async def startup_event():
         logger.error("Add it to .env file")
     else:
         logger.info("✅ OpenAI API key configured")
+    
+    # Check live data
+    if LIVE_DATA_AVAILABLE:
+        info = get_loader_info()
+        logger.info(f"✅ Live data loaded: {info['source_file']} ({info['total_points']} points)")
+    else:
+        logger.warning("⚠️ No CSV data found - using simulation mode")
+        logger.warning("   Place 'VinIinMOSFETVdsSCRVds_240_ALL.csv' in project root for live data")
     
     # Check Firebase
     try:
@@ -376,13 +389,22 @@ def _generate_channels(base: float, spread: float, count: int = 4) -> list:
 
 
 @app.get("/sensor-data")
-async def sensor_data(user: dict = Depends(verify_firebase_token)) -> dict:
-    """Get sensor data."""
-    data = {
-        "voltage": _generate_channels(300.0, 15.0),
-        "current": _generate_channels(15.0, 4.0),
-        "temperature": _generate_channels(45.0, 20.0),
-    }
+async def sensor_data() -> dict:
+    """
+    Get sensor data - uses live CSV data if available, otherwise simulation.
+    No authentication required for demo mode.
+    """
+    if LIVE_DATA_AVAILABLE:
+        # Use real data from CSV
+        data = get_live_data()
+    else:
+        # Fallback to random simulation
+        data = {
+            "voltage": _generate_channels(300.0, 15.0),
+            "current": _generate_channels(15.0, 4.0),
+            "temperature": _generate_channels(45.0, 20.0),
+        }
+    
     return data
 
 
@@ -518,11 +540,14 @@ async def delete_session(session_id: str, user: dict = Depends(verify_firebase_t
 @app.get("/health")
 async def health_check():
     """Health check."""
+    loader_info = get_loader_info() if LIVE_DATA_AVAILABLE else {"loaded": False}
+    
     return {
         "status": "ok",
         "openai": "configured" if os.getenv("OPENAI_API_KEY") else "missing",
         "firebase": "configured" if firebase_app else "not configured",
-        "vector_store": "loaded" if agent.vector_store else "empty"
+        "vector_store": "loaded" if agent.vector_store else "empty",
+        "live_data": loader_info
     }
 
 

@@ -1,6 +1,6 @@
 Need to work on Save sessions on firebase page and that should pretty much be it for winterbreak progress. 
 
-Oh and also I need to make sure I am using an existing Dataset from Zeid
+Oh and also I need to make sure I am using an existing Dataset from Zeid for the Demo 
 
 Test it on Microcontroller and configure GPIOs (next semester)
 
