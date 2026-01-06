@@ -7,3 +7,4 @@ Test it on Microcontroller and configure GPIOs (next semester)
 Train datasets with API Key (next semester)
 
 
+Different Models + Pause/Resume Button 
