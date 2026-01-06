@@ -203,6 +203,78 @@
             background-color: #e8ecef;
         }
 
+
+        .axis-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            background-color: #f5f7fa;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+
+        .axis-control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .axis-control-group label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .axis-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto auto;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .axis-input {
+            padding: 0.5rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        .axis-input:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+
+        .btn-apply {
+            padding: 0.5rem 1rem;
+            background-color: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .btn-apply:hover {
+            background-color: #1a91da;
+        }
+
+        .btn-auto {
+            padding: 0.5rem 0.75rem;
+            background-color: #657786;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .btn-auto:hover {
+            background-color: #56646f;
+        }
+
         .channel-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -585,7 +657,26 @@
                 <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Demo Mode</button>
                 <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
             </div>
-
+            <div class="axis-controls">
+                <div class="axis-control-group">
+                    <label>Y-Axis Left (Voltage/Temp)</label>
+                    <div class="axis-inputs">
+                        <input type="number" id="yLeftMin" class="axis-input" placeholder="Min" value="0">
+                        <input type="number" id="yLeftMax" class="axis-input" placeholder="Max" value="500">
+                        <button class="btn-apply" onclick="updateYAxisRanges()">Apply</button>
+                        <button class="btn-auto" onclick="autoScaleLeftAxis()">Auto</button>
+                    </div>
+                </div>
+                <div class="axis-control-group">
+                    <label>Y-Axis Right (Current)</label>
+                    <div class="axis-inputs">
+                        <input type="number" id="yRightMin" class="axis-input" placeholder="Min" value="0">
+                        <input type="number" id="yRightMax" class="axis-input" placeholder="Max" value="20">
+                        <button class="btn-apply" onclick="updateYAxisRanges()">Apply>
+                            <button class="btn-auto" onclick="autoScaleRightAxis()">Auto</button>
+                    </div>
+                </div>
+            </div>
             <details class="channel-selector">
                 <summary>Channel Selection & Labels</summary>
                 <div class="channel-grid" id="channelGrid"></div>
@@ -823,7 +914,8 @@
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        beginAtZero: true,
+                        min: 0,
+                        max: 500,
                         title: {
                             display: true,
                             text: 'Voltage (V) / Temperature (°C)'
@@ -833,7 +925,8 @@
                         type: 'linear',
                         display: true,
                         position: 'right',
-                        beginAtZero: true,
+                        min: 0,
+                        max: 20,
                         title: {
                             display: true,
                             text: 'Current (A)'
@@ -1384,6 +1477,74 @@
             document.getElementById('authButton').addEventListener('click', handleAuthClick);
             updateUserBadge();
         });
+
+
+
+        function updateYAxisRanges() {
+            const yLeftMin = parseFloat(document.getElementById('yLeftMin').value) || 0;
+            const yLeftMax = parseFloat(document.getElementById('yLeftMax').value) || 500;
+            const yRightMin = parseFloat(document.getElementById('yRightMin').value) || 0;
+            const yRightMax = parseFloat(document.getElementById('yRightMax').value) || 20;
+
+            chart.options.scales.y.min = yLeftMin;
+            chart.options.scales.y.max = yLeftMax;
+            chart.options.scales.y1.min = yRightMin;
+            chart.options.scales.y1.max = yRightMax;
+
+            chart.update();
+
+            document.getElementById('statusBar').textContent =
+                `Axis ranges updated: Left [${yLeftMin}, ${yLeftMax}], Right [${yRightMin}, ${yRightMax}]`;
+        }
+
+        function autoScaleLeftAxis() {
+            if (sessionData.length === 0) {
+                alert('No data yet - start monitoring first');
+                return;
+            }
+
+            let allValues = [];
+            sessionData.forEach(d => {
+                allValues.push(...d.voltage.filter(v => v > 0));
+                allValues.push(...d.temperature.filter(t => t > 0));
+            });
+
+            if (allValues.length === 0) {
+                alert('No valid data for left axis');
+                return;
+            }
+
+            const min = Math.floor(Math.min(...allValues) * 0.9);
+            const max = Math.ceil(Math.max(...allValues) * 1.1);
+
+            document.getElementById('yLeftMin').value = min;
+            document.getElementById('yLeftMax').value = max;
+            updateYAxisRanges();
+        }
+
+        function autoScaleRightAxis() {
+            if (sessionData.length === 0) {
+                alert('No data yet - start monitoring first');
+                return;
+            }
+
+            let allValues = [];
+            sessionData.forEach(d => {
+                allValues.push(...d.current.filter(c => c > 0));
+            });
+
+            if (allValues.length === 0) {
+                alert('No valid data for right axis');
+                return;
+            }
+
+            const min = Math.floor(Math.min(...allValues) * 0.9);
+            const max = Math.ceil(Math.max(...allValues) * 1.1);
+
+            document.getElementById('yRightMin').value = min;
+            document.getElementById('yRightMax').value = max;
+            updateYAxisRanges();
+        }
     </script>
 </body>
 
