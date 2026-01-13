@@ -288,6 +288,12 @@
             gap: 0.5rem;
         }
 
+        .status-bar.paused {
+            background-color: #fff3e0;
+            border-left: 4px solid #ff9800;
+            color: #e65100;
+        }
+
         .channel-item input[type="checkbox"] {
             width: 16px;
             height: 16px;
@@ -650,6 +656,11 @@
 
             <div class="controls">
                 <button id="startBtn" class="btn btn-success" onclick="startMonitoring()">Start</button>
+                <button id="pauseBtn" class="btn btn-warning" onclick="pauseMonitoring()"
+                    style="display:none;">Pause</button>
+                <button id="resumeBtn" class="btn btn-success" onclick="resumeMonitoring()" style="display:none;">▶
+                    Resume</button>
+
                 <button id="stopBtn" class="btn btn-danger" onclick="stopMonitoring()"
                     style="display:none;">Stop</button>
                 <button id="saveBtn" class="btn btn-primary" onclick="saveCurrentSession()" style="display:none;">Save
@@ -791,6 +802,9 @@
     </script>
 
     <script>
+
+
+        let isPaused = false;
         let currentUser = null;
         let currentIdToken = localStorage.getItem('idaq_id_token');
         let sessionOwner = null;
@@ -1085,8 +1099,16 @@
             monitoring = true;
             sessionStart = Date.now();
             sessionData = [];
+            document.getElementById('pauseBtn').style.display = 'none';
+            document.getElementById('resumeBtn').style.display = 'none';
+            isPaused = false;
+            const statusBar = document.getElementById('statusBar');
+            statusBar.classList.remove('paused');
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('stopBtn').style.display = 'inline-block';
+            document.getElementById('pauseBtn').style.display = 'inline-block';
+            document.getElementById('resumeBtn').style.display = 'none';
+            isPaused = false;
             document.getElementById('saveBtn').style.display = 'none'; // Hide save button when starting
             document.getElementById('simBtn').disabled = true;
             monitorInterval = setInterval(fetchSensorData, 2000);
@@ -1109,7 +1131,43 @@
                 document.getElementById('saveBtn').style.display = 'inline-block';
             }
         }
+        async function pauseMonitoring() {
+            if (!monitoring || isPaused) return;
 
+            try {
+                const response = await fetch('/pause-streaming', { method: 'POST' });
+                if (response.ok) {
+                    isPaused = true;
+                    document.getElementById('pauseBtn').style.display = 'none';
+                    document.getElementById('resumeBtn').style.display = 'inline-block';
+
+                    const statusBar = document.getElementById('statusBar');
+                    statusBar.textContent = '⏸ Data collection paused';
+                    statusBar.classList.add('paused');
+                }
+            } catch (error) {
+                console.error('Pause error:', error);
+            }
+        }
+
+        async function resumeMonitoring() {
+            if (!monitoring || !isPaused) return;
+
+            try {
+                const response = await fetch('/resume-streaming', { method: 'POST' });
+                if (response.ok) {
+                    isPaused = false;
+                    document.getElementById('pauseBtn').style.display = 'inline-block';
+                    document.getElementById('resumeBtn').style.display = 'none';
+
+                    const statusBar = document.getElementById('statusBar');
+                    statusBar.classList.remove('paused');
+                    updateStatusBar();
+                }
+            } catch (error) {
+                console.error('Resume error:', error);
+            }
+        }
         async function saveCurrentSession() {
             if (!currentIdToken || !sessionOwner || sessionOwner.uid === 'guest') {
                 alert('Please sign in to save sessions');
@@ -1172,6 +1230,10 @@
         }
 
         async function fetchSensorData() {
+            if (isPaused) {
+                // Don't fetch new data when paused
+                return;
+            }
             if (!monitoring) return;
 
             try {

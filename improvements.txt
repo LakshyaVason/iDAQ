@@ -8,3 +8,7 @@ Train datasets with API Key (next semester)
 
 
 Different Models + Pause/Resume Button 
+
+Md cleaner 
+
+Sign Out Interface clear

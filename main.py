@@ -46,6 +46,9 @@ db: Optional[firestore.Client] = None
 # Initialize AI agent
 agent = DiagnosticsAgent()
 
+# Global pause state for data streaming
+data_streaming_paused = False
+
 app = FastAPI(title="iDAQ Diagnostics Server")
 
 app.add_middleware(
@@ -392,8 +395,14 @@ def _generate_channels(base: float, spread: float, count: int = 4) -> list:
 async def sensor_data() -> dict:
     """
     Get sensor data - uses live CSV data if available, otherwise simulation.
-    No authentication required for demo mode.
+    Returns cached/paused data when streaming is paused.
     """
+    global data_streaming_paused
+    
+    if data_streaming_paused:
+        # Return status indicating paused state
+        return {"paused": True}
+    
     if LIVE_DATA_AVAILABLE:
         # Use real data from CSV
         data = get_live_data()
@@ -405,7 +414,33 @@ async def sensor_data() -> dict:
             "temperature": _generate_channels(45.0, 20.0),
         }
     
+    data["paused"] = False
     return data
+
+
+@app.post("/pause-streaming")
+async def pause_streaming():
+    """Pause data streaming."""
+    global data_streaming_paused
+    data_streaming_paused = True
+    logger.info("Data streaming paused")
+    return {"status": "paused", "message": "Data streaming paused"}
+
+
+@app.post("/resume-streaming")
+async def resume_streaming():
+    """Resume data streaming."""
+    global data_streaming_paused
+    data_streaming_paused = False
+    logger.info("Data streaming resumed")
+    return {"status": "resumed", "message": "Data streaming resumed"}
+
+
+@app.get("/streaming-status")
+async def streaming_status():
+    """Get current streaming status."""
+    global data_streaming_paused
+    return {"paused": data_streaming_paused}
 
 
 @app.post("/chat")
@@ -540,6 +575,7 @@ async def delete_session(session_id: str, user: dict = Depends(verify_firebase_t
 @app.get("/health")
 async def health_check():
     """Health check."""
+    global data_streaming_paused
     loader_info = get_loader_info() if LIVE_DATA_AVAILABLE else {"loaded": False}
     
     return {
@@ -547,7 +583,8 @@ async def health_check():
         "openai": "configured" if os.getenv("OPENAI_API_KEY") else "missing",
         "firebase": "configured" if firebase_app else "not configured",
         "vector_store": "loaded" if agent.vector_store else "empty",
-        "live_data": loader_info
+        "live_data": loader_info,
+        "streaming_paused": data_streaming_paused
     }
 
 
