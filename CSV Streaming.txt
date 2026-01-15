@@ -1,0 +1,257 @@
+//
+// F28379D: FAST CSV LOGGER (Option A, 2-channel version)
+// - 1 kHz sampling for 1 second (1000 samples)
+// - ADC: ADCA, channels ADCINA0 (ANA J3-9) and ADCINA1 (ANA J3-7)
+// - DAC: DACB, DACOUTB (ANA J3-11) driving channel 0 if jumpered
+// - UART: SCIA to PC (via docking station USB)
+//
+// CSV format:
+//   time_us,adc0_count,adc1_count,dac_code
+//   0,....,....,....
+//   1000,....,....,....
+//   ...
+//
+
+#include <stdint.h>
+#include "device.h"
+#include "driverlib.h"
+
+// ---------- Logging parameters ----------
+#define NUM_SAMPLES   (1000U)   // 1 second @ 1 kHz
+#define SAMPLE_DT_US  (1000U)   // 1000 us = 1 ms
+
+// ---------- Globals ----------
+volatile uint16_t adcResultCh0  = 0;   // ADCA channel 0 (ADCINA0)
+volatile uint16_t adcResultCh1  = 0;   // ADCA channel 1 (ADCINA1)
+volatile uint16_t dacCode       = 0;   // DACB output code
+
+// Debug / watch variables
+volatile uint32_t loopCounter        = 0;  // how many samples processed
+volatile uint16_t currentSampleIndex = 0;  // last sample index (0..999)
+volatile uint32_t lastTimeUs         = 0;  // last timestamp in microseconds
+volatile uint16_t lastAdc0Sent       = 0;  // last ADC ch0 value sent
+volatile uint16_t lastAdc1Sent       = 0;  // last ADC ch1 value sent
+volatile uint16_t lastDacSent        = 0;  // last DAC value sent
+volatile uint16_t doneFlag           = 0;  // 0 = running, 1 = finished
+
+// UART helpers
+void sciSendChar(char c);
+void sciSendString(const char *s);
+void sciSendUint32(uint32_t v);
+void sciSendUint16(uint16_t v);
+
+// Prototypes
+void initADCA(void);
+void initDACB(void);
+void initSCIA(void);
+void stepAdcDacSample(void);
+
+// ===================================================
+// main()
+// ===================================================
+void main(void)
+{
+    uint32_t i, t_us;
+
+    Device_init();
+    Device_initGPIO();
+
+    Interrupt_initModule();
+    Interrupt_initVectorTable();
+
+    initADCA();
+    initDACB();
+    initSCIA();
+
+    doneFlag    = 0;
+    loopCounter = 0;
+
+    //
+    // CSV header
+    //
+    sciSendString("time_us,adc0_count,adc1_count,dac_code\r\n");
+
+    //
+    // 1000 samples @ 1 kHz
+    //
+    for(i = 0; i < NUM_SAMPLES; i++)
+    {
+        loopCounter++;
+
+        // Take one sample on both ADC channels (updates adcResultCh0/1 & dacCode)
+        stepAdcDacSample();
+
+        // Time stamp in microseconds
+        t_us = i * SAMPLE_DT_US;
+
+        // Update watch variables
+        currentSampleIndex = (uint16_t)i;
+        lastTimeUs         = t_us;
+        lastAdc0Sent       = adcResultCh0;
+        lastAdc1Sent       = adcResultCh1;
+        lastDacSent        = dacCode;
+
+        // Output CSV line: time_us,adc0_count,adc1_count,dac_code
+        sciSendUint32(t_us);
+        sciSendChar(',');
+        sciSendUint16(adcResultCh0);
+        sciSendChar(',');
+        sciSendUint16(adcResultCh1);
+        sciSendChar(',');
+        sciSendUint16(dacCode);
+        sciSendString("\r\n");
+
+        // Wait 1 ms between samples -> 1 kHz
+        DEVICE_DELAY_US(SAMPLE_DT_US);
+    }
+
+    doneFlag = 1;   // logging finished
+
+    // Sit here so you can inspect variables
+    while(1)
+    {
+        __asm(" NOP");
+    }
+}
+
+// ===================================================
+// ADC INIT (ADCA, channels ADCINA0 and ADCINA1)
+// ===================================================
+void initADCA(void)
+{
+    ADC_setPrescaler(ADCA_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCA_BASE, ADC_RESOLUTION_12BIT, ADC_MODE_SINGLE_ENDED);
+    ADC_setInterruptPulseMode(ADCA_BASE, ADC_PULSE_END_OF_CONV);
+
+    ADC_enableConverter(ADCA_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // SOC0: SW trigger, ADCINA0, acquisition window 15 cycles
+    ADC_setupSOC(ADCA_BASE,
+                 ADC_SOC_NUMBER0,
+                 ADC_TRIGGER_SW_ONLY,
+                 ADC_CH_ADCIN0,
+                 15);
+
+    // SOC1: SW trigger, ADCINA1, acquisition window 15 cycles
+    ADC_setupSOC(ADCA_BASE,
+                 ADC_SOC_NUMBER1,
+                 ADC_TRIGGER_SW_ONLY,
+                 ADC_CH_ADCIN1,
+                 15);
+}
+
+// ===================================================
+// DAC INIT (DACB -> DACOUTB, GPIO67)
+// ===================================================
+void initDACB(void)
+{
+    // GPIO67 = DACOUTB
+    GPIO_setAnalogMode(67, GPIO_ANALOG_ENABLED);
+
+#ifdef DAC_REF_ADC_VREFHI
+    DAC_setReference(DACB_BASE, DAC_REF_ADC_VREFHI);    // Use ADC VREFHI (~3.3 V)
+#endif
+
+    dacCode = 0U;
+    DAC_setShadowValue(DACB_BASE, dacCode);
+    DAC_enableOutput(DACB_BASE);
+}
+
+// ===================================================
+// Take one DAC→ADC sample on 2 channels
+//  - DACB drives DACOUTB
+//  - ADCA samples ADCINA0 (SOC0) and ADCINA1 (SOC1)
+// ===================================================
+void stepAdcDacSample(void)
+{
+    // Simple sawtooth ramp on DAC
+    dacCode += 64U;
+    if(dacCode > 4000U)
+    {
+        dacCode = 0U;
+    }
+    DAC_setShadowValue(DACB_BASE, dacCode);
+
+    // Trigger ADC conversions on SOC0 and SOC1
+    ADC_forceSOC(ADCA_BASE, ADC_SOC_NUMBER0);
+    ADC_forceSOC(ADCA_BASE, ADC_SOC_NUMBER1);
+
+    // Wait a couple of microseconds for both conversions
+    DEVICE_DELAY_US(2);
+
+    // Read ADC results
+    adcResultCh0 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER0);
+    adcResultCh1 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER1);
+}
+
+// ===================================================
+// SCIA INIT @ 115200 baud, 8-N-1
+// ===================================================
+void initSCIA(void)
+{
+    // GPIO28 = SCIRXDA, GPIO29 = SCITXDA
+    GPIO_setPinConfig(GPIO_28_SCIRXDA);
+    GPIO_setPinConfig(GPIO_29_SCITXDA);
+
+    GPIO_setDirectionMode(28, GPIO_DIR_MODE_IN);
+    GPIO_setDirectionMode(29, GPIO_DIR_MODE_OUT);
+    GPIO_setQualificationMode(28, GPIO_QUAL_ASYNC);
+
+    // Make sure loopback is OFF (we're talking to PC, not ourselves)
+    SCI_disableLoopback(SCIA_BASE);
+
+    SCI_setConfig(SCIA_BASE,
+                  DEVICE_LSPCLK_FREQ,
+                  115200,
+                  SCI_CONFIG_WLEN_8 |
+                  SCI_CONFIG_STOP_ONE |
+                  SCI_CONFIG_PAR_NONE);
+
+    SCI_enableFIFO(SCIA_BASE);
+    SCI_enableModule(SCIA_BASE);
+}
+
+// ===================================================
+// SCI helper functions
+// ===================================================
+void sciSendChar(char c)
+{
+    SCI_writeCharBlockingNonFIFO(SCIA_BASE, (uint16_t)c);
+}
+
+void sciSendString(const char *s)
+{
+    while(*s != '\0')
+    {
+        sciSendChar(*s++);
+    }
+}
+
+void sciSendUint32(uint32_t v)
+{
+    char buf[12];
+    int i = 0;
+
+    if(v == 0U)
+    {
+        sciSendChar('0');
+        return;
+    }
+
+    while((v > 0U) && (i < 11))
+    {
+        buf[i++] = (char)('0' + (v % 10U));
+        v /= 10U;
+    }
+
+    while(i > 0)
+    {
+        sciSendChar(buf[--i]);
+    }
+}
+
+void sciSendUint16(uint16_t v)
+{
+    sciSendUint32((uint32_t)v);
+}

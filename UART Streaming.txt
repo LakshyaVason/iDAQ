@@ -1,0 +1,281 @@
+//
+// F28379D: 12-CH ADC LOGGER -> 1-wire UART (TX only)
+// - 1 kHz sampling via ePWM1 SOCA
+// - 4 differential voltage channels on ADCA/ADCB
+// - 8 single-ended channels on ADCC/ADCD
+// - Output: SCIA TX on GPIO36 @ 921600 baud (one wire + GND)
+//
+// Frame (little-endian):
+//   [0] 0xA5
+//   [1] 0x5A
+//   [2..3] sampleCounter (uint16 LE)
+//   [4..27] 12x uint16 LE: V0,V1,V2,V3,I0,I1,I2,I3,T0,T1,T2,T3
+//   [28..29] checksum (uint16 LE): sum of bytes [2..27]
+//
+
+#include <stdint.h>
+#include "device.h"
+#include "driverlib.h"
+
+#define SAMPLE_RATE_HZ     (1000U)
+#define SCI_BAUD           (921600U)
+
+// ---------- Globals ----------
+volatile uint16_t sampleCounter = 0;
+volatile uint16_t doneFlag = 0;
+
+// Results (12)
+volatile uint16_t ch[12];
+
+// Prototypes
+static void initEPWM1_SOCA_1kHz(void);
+static void initSCIA_TX_GPIO36(void);
+
+static void initADCA_diff(void);
+static void initADCB_diff(void);
+static void initADCC_se(void);
+static void initADCD_se(void);
+
+__interrupt void adcaISR(void);
+
+// SCI helpers
+static inline void sciSendByte(uint8_t b);
+static inline void sciSendU16LE(uint16_t v);
+static void sendFrame12(const uint16_t *vals12, uint16_t ctr);
+
+// ===================================================
+// main()
+// ===================================================
+void main(void)
+{
+    Device_init();
+    Device_initGPIO();
+
+    Interrupt_initModule();
+    Interrupt_initVectorTable();
+
+    initSCIA_TX_GPIO36();
+
+    // ADCs: split by mode
+    initADCA_diff();
+    initADCB_diff();
+    initADCC_se();
+    initADCD_se();
+
+    // ePWM trigger @ 1kHz
+    initEPWM1_SOCA_1kHz();
+
+    // Hook ISR: use ADCA interrupt to signal "sample ready"
+    Interrupt_register(INT_ADCA1, &adcaISR);
+    Interrupt_enable(INT_ADCA1);
+
+    EINT;
+    ERTM;
+
+    doneFlag = 0;
+    while(1)
+    {
+        __asm(" NOP");
+    }
+}
+
+// ===================================================
+// ePWM1 SOCA @ 1 kHz
+// ===================================================
+static void initEPWM1_SOCA_1kHz(void)
+{
+    // Use EPWM1 as timebase
+    SysCtl_disablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+
+    EPWM_setTimeBaseCounterMode(EPWM1_BASE, EPWM_COUNTER_MODE_UP);
+
+    // Choose TBCLK = EPWMCLK/(HSPCLKDIV*CLKDIV).
+    // We'll pick dividers to make TBPRD fit nicely.
+    EPWM_setClockPrescaler(EPWM1_BASE, EPWM_CLOCK_DIVIDER_8, EPWM_HSCLOCK_DIVIDER_8);
+
+    // TBCLK = SYSCLK / (8*8) = SYSCLK/64
+    // Period counts for 1kHz: TBPRD = TBCLK / 1000
+    uint32_t tbclk = DEVICE_SYSCLK_FREQ / 64U;
+    uint16_t tbprd = (uint16_t)(tbclk / SAMPLE_RATE_HZ);
+
+    EPWM_setTimeBasePeriod(EPWM1_BASE, tbprd - 1U);
+    EPWM_setTimeBaseCounter(EPWM1_BASE, 0U);
+
+    // SOCA on counter = zero
+    EPWM_enableADCTrigger(EPWM1_BASE, EPWM_SOC_A);
+    EPWM_setADCTriggerSource(EPWM1_BASE, EPWM_SOC_A, EPWM_SOC_TBCTR_ZERO);
+    EPWM_setADCTriggerEventPrescale(EPWM1_BASE, EPWM_SOC_A, 1U);
+
+    SysCtl_enablePeripheral(SYSCTL_PERIPH_CLK_TBCLKSYNC);
+}
+
+// ===================================================
+// SCIA TX-only on GPIO36 @ 921600 8N1
+// ===================================================
+static void initSCIA_TX_GPIO36(void)
+{
+    // GPIO36 = SCITXDA
+    GPIO_setPinConfig(GPIO_36_SCITXDA);
+    GPIO_setDirectionMode(36, GPIO_DIR_MODE_OUT);
+
+    SCI_disableModule(SCIA_BASE);
+
+    SCI_setConfig(SCIA_BASE,
+                  DEVICE_LSPCLK_FREQ,
+                  SCI_BAUD,
+                  SCI_CONFIG_WLEN_8 |
+                  SCI_CONFIG_STOP_ONE |
+                  SCI_CONFIG_PAR_NONE);
+
+    SCI_enableFIFO(SCIA_BASE);
+    SCI_resetTxFIFO(SCIA_BASE);
+    SCI_enableModule(SCIA_BASE);
+}
+
+// ===================================================
+// ADC init helpers
+// ===================================================
+
+static void initADCA_diff(void)
+{
+    ADC_setPrescaler(ADCA_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCA_BASE, ADC_RESOLUTION_16BIT, ADC_MODE_DIFFERENTIAL);
+    ADC_setInterruptPulseMode(ADCA_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCA_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // Differential voltages:
+    // V0: A0/A1 on SOC0, V1: A2/A3 on SOC1
+    // Trigger: ePWM1 SOCA
+    // NOTE: acquisition window bigger for 16-bit; adjust if needed
+    ADC_setupSOC(ADCA_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN0, 64);
+    ADC_setupSOC(ADCA_BASE, ADC_SOC_NUMBER1, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN2, 64);
+
+    // Interrupt when SOC1 completes (end of the ADCA voltage pair conversions)
+    ADC_setInterruptSource(ADCA_BASE, ADC_INT_NUMBER1, ADC_SOC_NUMBER1);
+    ADC_enableInterrupt(ADCA_BASE, ADC_INT_NUMBER1);
+    ADC_clearInterruptStatus(ADCA_BASE, ADC_INT_NUMBER1);
+}
+
+static void initADCB_diff(void)
+{
+    ADC_setPrescaler(ADCB_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCB_BASE, ADC_RESOLUTION_16BIT, ADC_MODE_DIFFERENTIAL);
+    ADC_setInterruptPulseMode(ADCB_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCB_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // V2: B0/B1 SOC0, V3: B2/B3 SOC1
+    ADC_setupSOC(ADCB_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN0, 64);
+    ADC_setupSOC(ADCB_BASE, ADC_SOC_NUMBER1, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN2, 64);
+}
+
+static void initADCC_se(void)
+{
+    ADC_setPrescaler(ADCC_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCC_BASE, ADC_RESOLUTION_12BIT, ADC_MODE_SINGLE_ENDED);
+    ADC_setInterruptPulseMode(ADCC_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCC_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // I0..I3 = C0..C3 on SOC0..SOC3
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN0, 15);
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER1, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN1, 15);
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER2, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN2, 15);
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER3, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN3, 15);
+
+    // T0..T1 = C4..C5 on SOC4..SOC5
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER4, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN4, 15);
+    ADC_setupSOC(ADCC_BASE, ADC_SOC_NUMBER5, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN5, 15);
+}
+
+static void initADCD_se(void)
+{
+    ADC_setPrescaler(ADCD_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCD_BASE, ADC_RESOLUTION_12BIT, ADC_MODE_SINGLE_ENDED);
+    ADC_setInterruptPulseMode(ADCD_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCD_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // T2..T3 = D0..D1 on SOC0..SOC1
+    ADC_setupSOC(ADCD_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN0, 15);
+    ADC_setupSOC(ADCD_BASE, ADC_SOC_NUMBER1, ADC_TRIGGER_EPWM1_SOCA, ADC_CH_ADCIN1, 15);
+}
+
+// ===================================================
+// ADCA ISR: read all results + transmit one frame
+// ===================================================
+__interrupt void adcaISR(void)
+{
+    // Clear interrupt flag first
+    ADC_clearInterruptStatus(ADCA_BASE, ADC_INT_NUMBER1);
+
+    // Read differential voltage results (16-bit container, valid bits depend on mode)
+    ch[0] = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER0); // V0
+    ch[1] = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER1); // V1
+    ch[2] = ADC_readResult(ADCBRESULT_BASE, ADC_SOC_NUMBER0); // V2
+    ch[3] = ADC_readResult(ADCBRESULT_BASE, ADC_SOC_NUMBER1); // V3
+
+    // Read single-ended current + temp
+    ch[4] = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER0); // I0
+    ch[5] = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER1); // I1
+    ch[6] = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER2); // I2
+    ch[7] = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER3); // I3
+
+    ch[8]  = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER4); // T0
+    ch[9]  = ADC_readResult(ADCCRESULT_BASE, ADC_SOC_NUMBER5); // T1
+    ch[10] = ADC_readResult(ADCDRESULT_BASE, ADC_SOC_NUMBER0); // T2
+    ch[11] = ADC_readResult(ADCDRESULT_BASE, ADC_SOC_NUMBER1); // T3
+
+    // Send one binary frame
+    sendFrame12((const uint16_t*)ch, sampleCounter++);
+
+    Interrupt_clearACKGroup(INTERRUPT_ACK_GROUP1);
+}
+
+// ===================================================
+// SCI transmit helpers
+// ===================================================
+static inline void sciSendByte(uint8_t b)
+{
+    // FIFO-enabled, but simplest is still blocking write
+    SCI_writeCharBlockingFIFO(SCIA_BASE, (uint16_t)b);
+}
+
+static inline void sciSendU16LE(uint16_t v)
+{
+    sciSendByte((uint8_t)(v & 0xFFU));
+    sciSendByte((uint8_t)((v >> 8) & 0xFFU));
+}
+
+static void sendFrame12(const uint16_t *vals12, uint16_t ctr)
+{
+    uint16_t checksum = 0;
+    uint32_t i;
+
+    // Sync
+    sciSendByte(0xA5U);
+    sciSendByte(0x5AU);
+
+    // Sample counter (counts in checksum)
+    sciSendU16LE(ctr);
+    checksum += (uint8_t)(ctr & 0xFFU);
+    checksum += (uint8_t)((ctr >> 8) & 0xFFU);
+
+    // 12 channels
+    for(i = 0; i < 12U; i++)
+    {
+        uint16_t v = vals12[i];
+        uint8_t lo = (uint8_t)(v & 0xFFU);
+        uint8_t hi = (uint8_t)((v >> 8) & 0xFFU);
+
+        sciSendByte(lo);
+        sciSendByte(hi);
+
+        checksum += lo;
+        checksum += hi;
+    }
+
+    // checksum (not included in itself)
+    sciSendU16LE(checksum);
+}
