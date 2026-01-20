@@ -1,0 +1,219 @@
+//
+// F28379D: UART CSV LOGGER to Jetson Orin Nano
+// - UPDATED: Uses GPIO29 (SCITXDA) -> Jetson UART RX (one-wire TX + GND)
+// - 100 samples/sec continuous streaming
+// - CSV format: time_us,adc0,adc1,dac
+//
+
+#include <stdint.h>
+#include "device.h"
+#include "driverlib.h"
+
+// ---------- Streaming parameters ----------
+#define SAMPLE_DT_US  (10000U)   // 10000 us = 10 ms = 100 Hz sampling
+#define BAUD_RATE     (115200U)
+
+// ---------- Globals ----------
+volatile uint16_t adcResultCh0      = 0;
+volatile uint16_t adcResultCh1      = 0;
+volatile uint16_t dacCode           = 0;
+volatile uint32_t sampleCount       = 0;
+volatile uint16_t streamingEnabled  = 0;  // always on in this TX-only version
+
+// Prototypes
+void initADCA(void);
+void initDACB(void);
+void initSCIA_GPIO29_TX(void);   // UPDATED
+void stepAdcDacSample(void);
+
+void sciSendChar(char c);
+void sciSendString(const char *s);
+void sciSendUint32(uint32_t v);
+void sciSendUint16(uint16_t v);
+
+// ===================================================
+// main() - Continuous streaming mode
+// ===================================================
+void main(void)
+{
+    uint32_t t_us;
+
+    Device_init();
+    Device_initGPIO();
+    Interrupt_initModule();
+    Interrupt_initVectorTable();
+
+    initADCA();
+    initDACB();
+    initSCIA_GPIO29_TX();   // UPDATED: TX on GPIO29
+
+    sampleCount = 0;
+    streamingEnabled = 1;
+
+    // Send CSV header
+    sciSendString("time_us,adc0_count,adc1_count,dac_code\r\n");
+
+    // Continuous streaming loop
+    while(1)
+    {
+        if(streamingEnabled)
+        {
+            // Sample ADC and update DAC
+            stepAdcDacSample();
+
+            // Timestamp
+            t_us = sampleCount * SAMPLE_DT_US;
+
+            // Output CSV line
+            sciSendUint32(t_us);
+            sciSendChar(',');
+            sciSendUint16(adcResultCh0);
+            sciSendChar(',');
+            sciSendUint16(adcResultCh1);
+            sciSendChar(',');
+            sciSendUint16(dacCode);
+            sciSendString("\r\n");
+
+            sampleCount++;
+
+            // Pacing delay
+            DEVICE_DELAY_US(SAMPLE_DT_US);
+        }
+    }
+}
+
+// ===================================================
+// SCIA INIT using GPIO29 as TX (SCITXDA)
+// GPIO29 -> Jetson UART RX
+// ===================================================
+void initSCIA_GPIO29_TX(void)
+{
+    // UPDATED PINMUX: GPIO29 = SCITXDA (TX)
+    GPIO_setPinConfig(GPIO_29_SCITXDA);
+
+    GPIO_setDirectionMode(29, GPIO_DIR_MODE_OUT);
+    GPIO_setQualificationMode(29, GPIO_QUAL_ASYNC);
+
+    // Disable loopback (talk to Jetson, not ourselves)
+    SCI_disableLoopback(SCIA_BASE);
+
+    // Configure: 115200 baud, 8-N-1
+    SCI_setConfig(SCIA_BASE,
+                  DEVICE_LSPCLK_FREQ,
+                  BAUD_RATE,
+                  SCI_CONFIG_WLEN_8 |
+                  SCI_CONFIG_STOP_ONE |
+                  SCI_CONFIG_PAR_NONE);
+
+    SCI_enableFIFO(SCIA_BASE);
+    SCI_resetTxFIFO(SCIA_BASE);
+    SCI_enableModule(SCIA_BASE);
+}
+
+// ===================================================
+// ADC INIT
+// ===================================================
+void initADCA(void)
+{
+    ADC_setPrescaler(ADCA_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCA_BASE, ADC_RESOLUTION_12BIT, ADC_MODE_SINGLE_ENDED);
+    ADC_setInterruptPulseMode(ADCA_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCA_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // SOC0: ADCINA0
+    ADC_setupSOC(ADCA_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_SW_ONLY, ADC_CH_ADCIN0, 15);
+    // SOC1: ADCINA1
+    ADC_setupSOC(ADCA_BASE, ADC_SOC_NUMBER1, ADC_TRIGGER_SW_ONLY, ADC_CH_ADCIN1, 15);
+}
+
+// ===================================================
+// DAC INIT
+// ===================================================
+void initDACB(void)
+{
+    // GPIO67 = DACOUTB on many controlCARD/docking configs
+    GPIO_setAnalogMode(67, GPIO_ANALOG_ENABLED);
+
+#ifdef DAC_REF_ADC_VREFHI
+    DAC_setReference(DACB_BASE, DAC_REF_ADC_VREFHI);
+#endif
+
+    dacCode = 0U;
+    DAC_setShadowValue(DACB_BASE, dacCode);
+    DAC_enableOutput(DACB_BASE);
+}
+
+// ===================================================
+// Sample ADC and update DAC
+// ===================================================
+void stepAdcDacSample(void)
+{
+    // Sawtooth ramp on DAC
+    dacCode += 64U;
+    if(dacCode > 4000U)
+    {
+        dacCode = 0U;
+    }
+    DAC_setShadowValue(DACB_BASE, dacCode);
+
+    // Trigger ADC SOCs
+    ADC_forceSOC(ADCA_BASE, ADC_SOC_NUMBER0);
+    ADC_forceSOC(ADCA_BASE, ADC_SOC_NUMBER1);
+
+    // Wait briefly for conversions
+    DEVICE_DELAY_US(2);
+
+    // Read ADC results
+    adcResultCh0 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER0);
+    adcResultCh1 = ADC_readResult(ADCARESULT_BASE, ADC_SOC_NUMBER1);
+}
+
+// ===================================================
+// SCI Helper Functions
+// ===================================================
+void sciSendChar(char c)
+{
+    while(SCI_getTxFIFOStatus(SCIA_BASE) == SCI_FIFO_TX16)
+    {
+        // spin
+    }
+
+    SCI_writeCharNonBlocking(SCIA_BASE, (uint16_t)c);
+}
+
+void sciSendString(const char *s)
+{
+    while(*s)
+    {
+        sciSendChar(*s++);
+    }
+}
+
+void sciSendUint32(uint32_t v)
+{
+    char buf[12];
+    int i = 0;
+
+    if(v == 0U)
+    {
+        sciSendChar('0');
+        return;
+    }
+
+    while((v > 0U) && (i < 11))
+    {
+        buf[i++] = (char)('0' + (v % 10U));
+        v /= 10U;
+    }
+
+    while(i > 0)
+    {
+        sciSendChar(buf[--i]);
+    }
+}
+
+void sciSendUint16(uint16_t v)
+{
+    sciSendUint32((uint32_t)v);
+}
