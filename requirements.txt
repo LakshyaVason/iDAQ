@@ -42,3 +42,6 @@ ollama
 # PDF processing
 pypdf
 pypdf2
+
+#data streaming
+pyserial
