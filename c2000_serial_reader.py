@@ -1,11 +1,14 @@
 """
 C2000 DSP Serial Reader for Jetson Orin Nano.
-Reads 12-channel CSV data from C2000 via UART (GPIO29 TX → Jetson Pin 10 RX).
+Reads CSV data from C2000 via UART (GPIO36 TX → Jetson Pin 10 RX).
 
-CSV Format from C2000:
-time_us,vin0_mV,vin1_mV,vin2_mV,vin3_mV,i0_mA,i1_mA,i2_mA,i3_mA,t0_cC,t1_cC,t2_cC,t3_cC,dac_code
+Updated: baud rate changed to 921600. Ensure:
+  1. C2000 SCI register also set to 921600
+  2. sudo systemctl stop nvgetty && sudo systemctl disable nvgetty
+  3. sudo usermod -aG dialout $USER  (then re-login)
 """
 
+import os
 import serial
 import threading
 from collections import deque
@@ -14,12 +17,12 @@ from pathlib import Path
 
 
 class C2000SerialReader:
-    """Reads real-time 12-channel ADC data from C2000 DSP via UART."""
-    
+    """Reads real-time ADC data from C2000 DSP via UART."""
+
     def __init__(
         self,
-        port: str = "/dev/ttyTHS1",  # Jetson Orin Nano UART1
-        baudrate: int = 115200,
+        port: str = os.getenv("SERIAL_PORT", "/dev/ttyTHS1"),
+        baudrate: int = int(os.getenv("SERIAL_BAUDRATE", "921600")),  # changed from 115200
         callback: Optional[Callable[[Dict], None]] = None
     ):
         self.port = port
@@ -29,124 +32,113 @@ class C2000SerialReader:
         self.running = False
         self.buffer = deque(maxlen=1000)
         self.thread = None
-        
+
+        # ADC conversion (12-bit, 3.3V ref)
+        self.adc_ref_voltage = 3.3
+        self.adc_resolution = 4096
+
+        # Temperature estimation
+        self.r_thermal = 1.0  # °C/W
+        self.t_ambient = 25.0
+
         # Stats
         self.samples_received = 0
         self.parse_errors = 0
         self.header_received = False
-        self.last_dac_code = 0
-    
+
+    def adc_to_voltage(self, adc_count: int) -> float:
+        """Convert 12-bit ADC count to voltage."""
+        return (adc_count / self.adc_resolution) * self.adc_ref_voltage
+
     def parse_csv_line(self, line: str) -> Optional[Dict]:
         """
-        Parse CSV line from C2000:
-        time_us,vin0_mV,vin1_mV,vin2_mV,vin3_mV,i0_mA,i1_mA,i2_mA,i3_mA,t0_cC,t1_cC,t2_cC,t3_cC,dac_code
-        
-        Returns dict with voltage (V), current (A), temperature (°C) arrays
+        Parse CSV line from C2000: time_us,adc0_count,adc1_count,dac_code
         """
         try:
             line = line.strip()
-            
+
             # Skip header
             if line.startswith('time_us') or not line:
                 self.header_received = True
                 return None
-            
+
             parts = line.split(',')
-            if len(parts) < 14:  # Need all 14 fields
+            if len(parts) < 4:
                 return None
-            
-            # Parse fields
-            time_us = int(parts[0])
-            
-            # Voltages (mV → V)
-            vin0_mV = int(parts[1])
-            vin1_mV = int(parts[2])
-            vin2_mV = int(parts[3])
-            vin3_mV = int(parts[4])
-            
-            # Currents (mA → A)
-            i0_mA = int(parts[5])
-            i1_mA = int(parts[6])
-            i2_mA = int(parts[7])
-            i3_mA = int(parts[8])
-            
-            # Temperatures (centi-°C → °C)
-            t0_cC = int(parts[9])
-            t1_cC = int(parts[10])
-            t2_cC = int(parts[11])
-            t3_cC = int(parts[12])
-            
-            # DAC code (optional)
-            dac_code = int(parts[13]) if len(parts) > 13 else 0
-            self.last_dac_code = dac_code
-            
-            # Convert to standard units
-            voltage_V = [
-                round(vin0_mV / 1000.0, 2),
-                round(vin1_mV / 1000.0, 2),
-                round(vin2_mV / 1000.0, 2),
-                round(vin3_mV / 1000.0, 2)
-            ]
-            
-            current_A = [
-                round(i0_mA / 1000.0, 2),
-                round(i1_mA / 1000.0, 2),
-                round(i2_mA / 1000.0, 2),
-                round(i3_mA / 1000.0, 2)
-            ]
-            
-            temperature_C = [
-                round(t0_cC / 100.0, 1),
-                round(t1_cC / 100.0, 1),
-                round(t2_cC / 100.0, 1),
-                round(t3_cC / 100.0, 1)
-            ]
-            
+
+            time_us    = int(parts[0])
+            adc0_count = int(parts[1])
+            adc1_count = int(parts[2])
+            dac_code   = int(parts[3])
+
+            # Convert to voltages
+            v_adc0 = self.adc_to_voltage(adc0_count)
+            v_adc1 = self.adc_to_voltage(adc1_count)
+            v_dac  = self.adc_to_voltage(dac_code)
+
+            # Scale for display (adjust based on your actual circuit)
+            v_scaled = v_adc0 * 100  # 100:1 voltage divider
+            i_scaled = v_adc1 * 10   # 0.1 ohm shunt (10A/V)
+
+            # Temperature estimation
+            power       = abs(v_scaled * i_scaled)
+            t_estimated = self.t_ambient + (power * self.r_thermal * 0.001)
+
             return {
                 'time_us': time_us,
-                'time_s': time_us / 1_000_000.0,
+                'time_s':  time_us / 1_000_000.0,
                 'raw': {
-                    'vin_mV': [vin0_mV, vin1_mV, vin2_mV, vin3_mV],
-                    'i_mA': [i0_mA, i1_mA, i2_mA, i3_mA],
-                    't_cC': [t0_cC, t1_cC, t2_cC, t3_cC],
-                    'dac': dac_code
+                    'adc0': adc0_count,
+                    'adc1': adc1_count,
+                    'dac':  dac_code
                 },
-                'voltage': voltage_V,
-                'current': current_A,
-                'temperature': temperature_C,
-                'dac_code': dac_code
+                'voltage': [
+                    round(v_scaled, 2),
+                    round(v_adc1 * 100, 2),
+                    round(v_dac  * 100, 2),
+                    0.0
+                ],
+                'current': [
+                    round(i_scaled, 2),
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                'temperature': [
+                    round(t_estimated, 1),
+                    round(t_estimated * 0.9, 1),
+                    self.t_ambient,
+                    0.0
+                ]
             }
-            
-        except (ValueError, IndexError) as e:
+
+        except (ValueError, IndexError):
             self.parse_errors += 1
-            if self.parse_errors % 10 == 0:  # Log every 10 errors
-                print(f"Parse error #{self.parse_errors}: {e}")
             return None
-    
+
     def _read_loop(self):
         """Background thread reading serial data."""
         line_buffer = ""
-        
+
         while self.running:
             try:
                 if self.serial_conn and self.serial_conn.in_waiting:
                     chunk = self.serial_conn.read(self.serial_conn.in_waiting)
                     line_buffer += chunk.decode('utf-8', errors='ignore')
-                    
+
                     while '\n' in line_buffer:
                         line, line_buffer = line_buffer.split('\n', 1)
                         data = self.parse_csv_line(line)
-                        
+
                         if data:
                             self.samples_received += 1
                             self.buffer.append(data)
-                            
                             if self.callback:
                                 self.callback(data)
-                                
+
             except Exception as e:
                 print(f"Serial read error: {e}")
-    
+
     def start(self) -> bool:
         """Start reading from C2000."""
         try:
@@ -158,57 +150,58 @@ class C2000SerialReader:
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE
             )
-            
+
             self.running = True
-            self.thread = threading.Thread(target=self._read_loop, daemon=True)
+            self.thread  = threading.Thread(target=self._read_loop, daemon=True)
             self.thread.start()
-            
+
             print(f"✅ Connected to C2000 on {self.port} @ {self.baudrate} baud")
-            print(f"   Expecting 12-channel CSV format:")
-            print(f"   time_us,vin0_mV,...,vin3_mV,i0_mA,...,i3_mA,t0_cC,...,t3_cC,dac_code")
             return True
-            
+
         except Exception as e:
             print(f"❌ Serial connection failed: {e}")
             return False
-    
+
     def stop(self):
         """Stop reading."""
         self.running = False
         if self.serial_conn:
             self.serial_conn.close()
-    
+
     def send_command(self, cmd: str):
-        """Send command to C2000 (if implemented on C2000 side)."""
+        """Send command to C2000 (S=Start, X=Stop, R=Reset)."""
         if self.serial_conn and self.serial_conn.is_open:
             self.serial_conn.write(cmd.encode())
-    
+
     def get_latest(self) -> Optional[Dict]:
         """Get most recent reading."""
         return self.buffer[-1] if self.buffer else None
-    
+
     def get_recent(self, count: int = 100) -> list:
         """Get recent readings."""
         return list(self.buffer)[-count:]
-    
+
     def get_stats(self) -> Dict:
         """Get reader statistics."""
         return {
             "samples_received": self.samples_received,
-            "parse_errors": self.parse_errors,
-            "buffer_size": len(self.buffer),
-            "connected": self.running and self.serial_conn is not None,
-            "last_dac_code": self.last_dac_code
+            "parse_errors":     self.parse_errors,
+            "buffer_size":      len(self.buffer),
+            "connected":        self.running and self.serial_conn is not None,
+            "baudrate":         self.baudrate,
+            "port":             self.port,
         }
 
 
-# Global instance
+# ---------------------------------------------------------------------------
+# Global instance helpers
+# ---------------------------------------------------------------------------
 _c2000_reader: Optional[C2000SerialReader] = None
 
 
 def initialize_c2000_reader(
-    port: str = "/dev/ttyTHS1",
-    baudrate: int = 115200
+    port: str = os.getenv("SERIAL_PORT", "/dev/ttyTHS1"),
+    baudrate: int = int(os.getenv("SERIAL_BAUDRATE", "921600"))
 ) -> bool:
     """Initialize C2000 serial reader."""
     global _c2000_reader
@@ -222,16 +215,15 @@ def get_c2000_data() -> Dict:
         data = _c2000_reader.get_latest()
         if data:
             return {
-                'voltage': data['voltage'],
-                'current': data['current'],
+                'voltage':     data['voltage'],
+                'current':     data['current'],
                 'temperature': data['temperature']
             }
-    
-    # Fallback if no data
+
     return {
-        'voltage': [0.0, 0.0, 0.0, 0.0],
-        'current': [0.0, 0.0, 0.0, 0.0],
-        'temperature': [25.0, 25.0, 25.0, 25.0]
+        'voltage':     [0, 0, 0, 0],
+        'current':     [0, 0, 0, 0],
+        'temperature': [25, 25, 25, 0]
     }
 
 
@@ -248,20 +240,18 @@ def get_c2000_stats() -> Dict:
 
 
 if __name__ == "__main__":
-    print("Testing C2000 Serial Reader (12-channel mode)...")
+    print("Testing C2000 Serial Reader...")
     print("=" * 60)
-    
+
     if initialize_c2000_reader():
         import time
-        
         print("Waiting for data...")
         for i in range(10):
             time.sleep(1)
             stats = get_c2000_stats()
-            data = get_c2000_data()
+            data  = get_c2000_data()
             print(f"  Samples: {stats['samples_received']}, "
-                  f"V: {data['voltage'][0]:.2f}V, "
-                  f"I: {data['current'][0]:.2f}A, "
-                  f"T: {data['temperature'][0]:.1f}°C")
+                  f"V: {data['voltage'][0]:.1f}V, "
+                  f"I: {data['current'][0]:.1f}A")
     else:
         print("Failed to connect")

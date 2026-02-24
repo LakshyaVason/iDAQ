@@ -7,34 +7,94 @@
     <title>Admin Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 2rem; }
-        h1 { margin-bottom: 1rem; }
+        h1   { margin-bottom: 1rem; }
+        h2   { margin-top: 1.5rem; margin-bottom: 0.5rem; }
         form { margin-bottom: 1rem; }
         input[type="file"] { margin-bottom: 0.5rem; }
-        button { padding: 0.5rem 1rem; }
-        .message { padding: 0.5rem; margin-top: 0.5rem; border: 1px solid #ccc; }
+        button {
+            padding: 0.5rem 1rem;
+            background-color: #1da1f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-right: 0.5rem;
+        }
+        button:hover { background-color: #1a91da; }
+        button:disabled { background-color: #a0cce8; cursor: not-allowed; }
+        button.danger { background-color: #e0245e; }
+        button.danger:hover { background-color: #c91d4f; }
+
+        .message {
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: #333;
+            background: #f9f9f9;
+        }
+        .message.ok  { border-color: #17bf63; background: #e8f5e9; color: #2e7d32; }
+        .message.err { border-color: #e0245e; background: #fce4ec; color: #c62828; }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #e1e8ed;
+            margin: 1.5rem 0;
+        }
+
+        .metric-row {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .metric-tile {
+            background: #f5f7fa;
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .metric-tile .lbl { color: #657786; font-size: 0.75rem; margin-bottom: 2px; }
+        .metric-tile .val { font-weight: 700; color: #2c3e50; font-size: 1rem; }
+
+        pre {
+            background: #f5f7fa;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            margin-top: 0.75rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
-    <!-- Navigation bar for transitions between pages -->
-    <nav style="margin-bottom: 1rem;">
-        <a href="/user" style="background-color:#2196F3;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">User Dashboard</a>
+    <!-- Navigation bar -->
+    <nav style="margin-bottom: 1.5rem;">
+        <a href="/user"   style="background-color:#2196F3;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">User Dashboard</a>
         <a href="/logout" style="background-color:#f44336;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">Logout</a>
     </nav>
 
     <h1>Admin Dashboard</h1>
     <p>Upload training datasets and trigger model training.</p>
 
+    <!-- ── Original: single-file upload ─────────────────────────────── -->
     <h2>Upload Normal Dataset</h2>
     <form method="post" action="/upload-normal" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".csv" required>
-        <br>
+        <input type="file" name="file" accept=".csv" required><br>
         <button type="submit">Upload Normal CSV</button>
     </form>
 
     <h2>Upload Fault Dataset</h2>
     <form method="post" action="/upload-fault" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".csv" required>
-        <br>
+        <input type="file" name="file" accept=".csv" required><br>
         <button type="submit">Upload Fault CSV</button>
     </form>
 
@@ -43,5 +103,120 @@
         <button type="submit">Train Classifier and Baseline</button>
     </form>
 
+    <hr class="divider">
+
+    <!-- ── NEW: Batch labeled CSV upload ─────────────────────────────── -->
+    <h2>Upload Batch Training Data (F0–F7)</h2>
+    <p style="font-size:0.875rem;color:#657786;margin-bottom:0.75rem;">
+        Upload multiple CSV files named with an F0–F7 prefix (e.g. <code>F0_normal.csv</code>,
+        <code>F3_shortcircuit.csv</code>). These go into <code>training_data/</code> for auto-training.
+    </p>
+    <input type="file" id="batchFiles" multiple accept=".csv" style="margin-bottom:0.5rem;"><br>
+    <button onclick="uploadBatch()" id="uploadBatchBtn">Upload Files</button>
+    <div class="message" id="batchStatus" style="display:none;"></div>
+    <pre id="batchResult" style="display:none;"></pre>
+
+    <hr class="divider">
+
+    <!-- ── NEW: Auto-train RandomForest ──────────────────────────────── -->
+    <h2>Auto-Train RandomForest Classifier</h2>
+    <p style="font-size:0.875rem;color:#657786;margin-bottom:0.75rem;">
+        Scans <code>training_data/</code>, trains a single RandomForest on all F0–F7 classes
+        (F0 = Normal). The classifier is hot-reloaded into the server instantly — no restart needed.
+    </p>
+    <button onclick="runAutoTrain()" id="autoTrainBtn">▶ Run Auto-Training</button>
+    <div class="message" id="trainStatus" style="display:none;"></div>
+    <div class="metric-row" id="trainMetrics" style="display:none;">
+        <div class="metric-tile"><div class="lbl">CV Accuracy</div><div class="val" id="mAcc">—</div></div>
+        <div class="metric-tile"><div class="lbl">CV F1-Macro</div><div class="val" id="mF1">—</div></div>
+        <div class="metric-tile"><div class="lbl">Samples</div>    <div class="val" id="mN">—</div></div>
+        <div class="metric-tile"><div class="lbl">Features</div>   <div class="val" id="mFeat">—</div></div>
+    </div>
+    <pre id="trainResult" style="display:none;"></pre>
+
+    <script>
+        async function uploadBatch() {
+            const input  = document.getElementById('batchFiles');
+            const status = document.getElementById('batchStatus');
+            const result = document.getElementById('batchResult');
+            const btn    = document.getElementById('uploadBatchBtn');
+
+            if (!input.files.length) {
+                status.className   = 'message err';
+                status.textContent = 'Please select at least one CSV file.';
+                status.style.display = 'block';
+                return;
+            }
+
+            btn.disabled         = true;
+            status.className     = 'message';
+            status.textContent   = `Uploading ${input.files.length} file(s)…`;
+            status.style.display = 'block';
+            result.style.display = 'none';
+
+            const fd = new FormData();
+            for (const f of input.files) fd.append('files', f);
+
+            try {
+                const r = await fetch('/upload-training-batch', { method: 'POST', body: fd });
+                const d = await r.json();
+
+                status.className   = d.errors.length ? 'message err' : 'message ok';
+                status.textContent = d.message;
+
+                result.textContent   = JSON.stringify(d, null, 2);
+                result.style.display = 'block';
+            } catch(e) {
+                status.className   = 'message err';
+                status.textContent = '❌ Upload failed: ' + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function runAutoTrain() {
+            const status  = document.getElementById('trainStatus');
+            const result  = document.getElementById('trainResult');
+            const metrics = document.getElementById('trainMetrics');
+            const btn     = document.getElementById('autoTrainBtn');
+
+            btn.disabled          = true;
+            metrics.style.display = 'none';
+            status.className      = 'message';
+            status.textContent    = '⏳ Training in progress… (may take 30–60 s)';
+            status.style.display  = 'block';
+            result.style.display  = 'none';
+
+            try {
+                const r = await fetch('/auto-train', { method: 'POST' });
+                const d = await r.json();
+
+                if (d.status === 'success') {
+                    const clf = d.classifier;
+                    status.className   = 'message ok';
+                    status.textContent = '✅ Training complete — classifier hot-reloaded';
+
+                    document.getElementById('mAcc').textContent  =
+                        `${(clf.cv_accuracy_mean*100).toFixed(1)}% ±${(clf.cv_accuracy_std*100).toFixed(1)}%`;
+                    document.getElementById('mF1').textContent   =
+                        `${(clf.cv_f1_macro_mean*100).toFixed(1)}% ±${(clf.cv_f1_macro_std*100).toFixed(1)}%`;
+                    document.getElementById('mN').textContent    = clf.n_samples?.toLocaleString() ?? '—';
+                    document.getElementById('mFeat').textContent = (clf.features||[]).join(', ');
+                    metrics.style.display = 'flex';
+                } else {
+                    status.className   = 'message err';
+                    status.textContent = '❌ Training failed — see details below';
+                }
+
+                result.textContent   = JSON.stringify(d, null, 2);
+                result.style.display = 'block';
+            } catch(e) {
+                status.className   = 'message err';
+                status.textContent = '❌ ' + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
 </body>
 </html>

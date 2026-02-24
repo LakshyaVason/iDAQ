@@ -27,6 +27,8 @@ langserve[all]
 # FastAPI server
 fastapi
 uvicorn
+uvicorn[standard]        
+websockets>=12.0            
 firebase-admin
 
 # Vector store and embeddings
@@ -45,3 +47,7 @@ pypdf2
 
 #data streaming
 pyserial
+
+#Firebase RTDB pusher
+google-auth>=2.29.0
+google-auth[requests]>=0.4.0 
