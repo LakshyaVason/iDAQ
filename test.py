@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """test.py
 
 Quick local tester for Ollama model via the `ollama` CLI.

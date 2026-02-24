@@ -26,14 +26,19 @@ echo "║                                                            ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Check Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}✗ Python 3 not found${NC}"
+# Check Python (supports both python3 and python)
+PYTHON_CMD=""
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}✗ Python not found${NC}"
     echo "Install Python 3.10 or higher"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Python found: $(python3 --version)${NC}"
+echo -e "${GREEN}✓ Python found: $($PYTHON_CMD --version)${NC}"
 
 # Check .env
 if [ ! -f ".env" ]; then
@@ -66,7 +71,7 @@ fi
 # Check if requirements are installed
 echo ""
 echo "Checking Python dependencies..."
-if ! python3 -c "import fastapi" &> /dev/null; then
+if ! $PYTHON_CMD -c "import fastapi" &> /dev/null; then
     echo "Installing dependencies..."
     pip install -r requirements.txt
     echo -e "${GREEN}✓ Dependencies installed${NC}"
@@ -170,7 +175,7 @@ if [ -f "diagnose.py" ]; then
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  System Diagnostics${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    python3 diagnose.py
+    $PYTHON_CMD diagnose.py
 
     if [ $? -ne 0 ]; then
         echo ""
@@ -229,7 +234,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     
     # Start server
-    python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    $PYTHON_CMD -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 else
     echo ""
     echo "To start the server manually, run:"
@@ -239,5 +244,5 @@ else
     echo -e "${GREEN}  uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4${NC}"
     echo ""
     echo "To test C2000 connection directly:"
-    echo -e "${GREEN}  python3 c2000_serial_reader.py${NC}"
+    echo -e "${GREEN}  $PYTHON_CMD c2000_serial_reader.py${NC}"
 fi
