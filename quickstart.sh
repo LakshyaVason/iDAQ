@@ -93,7 +93,7 @@ fi
 
 echo "Checking for UART device: $UART_PORT"
 
-if [ -e "$UART_PORT" ]; then
+if ls "$UART_PORT" &>/dev/null || sudo ls "$UART_PORT" &>/dev/null; then
     echo -e "${GREEN}✓ UART device found: $UART_PORT${NC}"
     
     # Check permissions
@@ -117,18 +117,17 @@ if [ -e "$UART_PORT" ]; then
     # Test if data is streaming
     echo ""
     echo "Testing UART data stream (5 second timeout)..."
-    if timeout 5 head -n 5 $UART_PORT > /tmp/uart_test.txt 2>/dev/null; then
-        if grep -q "time_us" /tmp/uart_test.txt 2>/dev/null; then
-            echo -e "${GREEN}✓ C2000 CSV data detected!${NC}"
-            echo "Sample data:"
-            head -n 2 /tmp/uart_test.txt | sed 's/^/  /'
+    stty -F $UART_PORT 921600 2>/dev/null
+    if timeout 5 dd if=$UART_PORT of=/tmp/uart_test.bin bs=1 count=120 2>/dev/null; then
+        if xxd /tmp/uart_test.bin 2>/dev/null | grep -q "a5 5a"; then
+            echo -e "${GREEN}✓ C2000 binary packet stream detected!${NC}"
             C2000_CONNECTED=true
         else
-            echo -e "${YELLOW}⚠ Data received but format not recognized${NC}"
-            echo "Expected CSV format: time_us,vin0_mV,...,t3_cC,dac_code"
+            echo -e "${YELLOW}⚠ Data received but binary sync bytes (0xA5 0x5A) not found${NC}"
+            echo "  C2000 may still be running old firmware — flash the new binary firmware"
             C2000_CONNECTED=false
         fi
-        rm -f /tmp/uart_test.txt
+        rm -f /tmp/uart_test.bin
     else
         echo -e "${YELLOW}⚠ No data received from $UART_PORT${NC}"
         echo "Possible issues:"

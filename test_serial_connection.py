@@ -1,251 +1,222 @@
+#!/usr/bin/env python3
 """
-C2000 DSP Serial Reader for Jetson Orin Nano.
-Reads CSV data from C2000 via UART (GPIO36 TX → Jetson Pin 10 RX).
+test_serial_connection.py
+
+Tests the C2000 binary packet stream from the Jetson side.
+Run this before starting the main server to confirm:
+  1. Port opens at 921600 baud
+  2. Sync bytes 0xA5 0x5A are detected
+  3. CRC validates correctly
+  4. All 12 channels print non-zero values
+
+Usage:
+    python3 test_serial_connection.py
+    python3 test_serial_connection.py --port /dev/ttyTHS2
+    python3 test_serial_connection.py --port /dev/ttyUSB0 --baud 921600
 """
+
+import argparse
+import os
+import struct
+import sys
+import time
 
 import serial
-import threading
-from collections import deque
-from typing import Dict, Optional, Callable
-from pathlib import Path
 
 
-class C2000SerialReader:
-    """Reads real-time ADC data from C2000 DSP via UART."""
-    
-    def __init__(
-        self,
-        port: str = "/dev/ttyTHS1",  # Jetson Orin Nano UART1
-        baudrate: int = 115200,
-        callback: Optional[Callable[[Dict], None]] = None
-    ):
-        self.port = port
-        self.baudrate = baudrate
-        self.callback = callback
-        self.serial_conn = None
-        self.running = False
-        self.buffer = deque(maxlen=1000)
-        self.thread = None
-        
-        # ADC conversion (12-bit, 3.3V ref) [17]
-        self.adc_ref_voltage = 3.3
-        self.adc_resolution = 4096
-        
-        # Temperature estimation
-        self.r_thermal = 1.0  # °C/W
-        self.t_ambient = 25.0
-        
-        # Stats
-        self.samples_received = 0
-        self.parse_errors = 0
-        self.header_received = False
-    
-    def adc_to_voltage(self, adc_count: int) -> float:
-        """Convert 12-bit ADC count to voltage."""
-        return (adc_count / self.adc_resolution) * self.adc_ref_voltage
-    
-    def parse_csv_line(self, line: str) -> Optional[Dict]:
-        """
-        Parse CSV line from C2000: time_us,adc0_count,adc1_count,dac_code
-        """
-        try:
-            line = line.strip()
-            
-            # Skip header
-            if line.startswith('time_us') or not line:
-                self.header_received = True
-                return None
-            
-            parts = line.split(',')
-            if len(parts) < 4:
-                return None
-            
-            time_us = int(parts[0])
-            adc0_count = int(parts[1])
-            adc1_count = int(parts[2])
-            dac_code = int(parts[3])
-            
-            # Convert to voltages
-            v_adc0 = self.adc_to_voltage(adc0_count)
-            v_adc1 = self.adc_to_voltage(adc1_count)
-            v_dac = self.adc_to_voltage(dac_code)
-            
-            # Scale for display (adjust based on your actual circuit)
-            # Example: voltage divider ratio, current sense resistor, etc.
-            v_scaled = v_adc0 * 100  # If using 100:1 voltage divider
-            i_scaled = v_adc1 * 10   # If using 0.1 ohm shunt (10A/V)
-            
-            # Temperature estimation
-            power = abs(v_scaled * i_scaled)
-            t_estimated = self.t_ambient + (power * self.r_thermal * 0.001)
-            
-            return {
-                'time_us': time_us,
-                'time_s': time_us / 1_000_000.0,
-                'raw': {
-                    'adc0': adc0_count,
-                    'adc1': adc1_count,
-                    'dac': dac_code
-                },
-                'voltage': [
-                    round(v_scaled, 2),
-                    round(v_adc1 * 100, 2),
-                    round(v_dac * 100, 2),
-                    0.0
-                ],
-                'current': [
-                    round(i_scaled, 2),
-                    0.0,
-                    0.0,
-                    0.0
-                ],
-                'temperature': [
-                    round(t_estimated, 1),
-                    round(t_estimated * 0.9, 1),
-                    self.t_ambient,
-                    0.0
-                ]
-            }
-            
-        except (ValueError, IndexError) as e:
-            self.parse_errors += 1
-            return None
-    
-    def _read_loop(self):
-        """Background thread reading serial data."""
-        line_buffer = ""
-        
-        while self.running:
-            try:
-                if self.serial_conn and self.serial_conn.in_waiting:
-                    chunk = self.serial_conn.read(self.serial_conn.in_waiting)
-                    line_buffer += chunk.decode('utf-8', errors='ignore')
-                    
-                    while '\n' in line_buffer:
-                        line, line_buffer = line_buffer.split('\n', 1)
-                        data = self.parse_csv_line(line)
-                        
-                        if data:
-                            self.samples_received += 1
-                            self.buffer.append(data)
-                            
-                            if self.callback:
-                                self.callback(data)
-                                
-            except Exception as e:
-                print(f"Serial read error: {e}")
-    
-    def start(self) -> bool:
-        """Start reading from C2000."""
-        try:
-            self.serial_conn = serial.Serial(
-                port=self.port,
-                baudrate=self.baudrate,
-                timeout=0.1,
-                bytesize=serial.EIGHTBITS,
-                parity=serial.PARITY_NONE,
-                stopbits=serial.STOPBITS_ONE
-            )
-            
-            self.running = True
-            self.thread = threading.Thread(target=self._read_loop, daemon=True)
-            self.thread.start()
-            
-            print(f"✅ Connected to C2000 on {self.port} @ {self.baudrate} baud")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Serial connection failed: {e}")
-            return False
-    
-    def stop(self):
-        """Stop reading."""
-        self.running = False
-        if self.serial_conn:
-            self.serial_conn.close()
-    
-    def send_command(self, cmd: str):
-        """Send command to C2000 (S=Start, X=Stop, R=Reset)."""
-        if self.serial_conn and self.serial_conn.is_open:
-            self.serial_conn.write(cmd.encode())
-    
-    def get_latest(self) -> Optional[Dict]:
-        """Get most recent reading."""
-        return self.buffer[-1] if self.buffer else None
-    
-    def get_recent(self, count: int = 100) -> list:
-        """Get recent readings."""
-        return list(self.buffer)[-count:]
-    
-    def get_stats(self) -> Dict:
-        """Get reader statistics."""
-        return {
-            "samples_received": self.samples_received,
-            "parse_errors": self.parse_errors,
-            "buffer_size": len(self.buffer),
-            "connected": self.running and self.serial_conn is not None
-        }
+# ── Packet constants ───────────────────────────────────────────────────────────
+SYNC0          = 0xA5
+SYNC1          = 0x5A
+PKT_TOTAL_LEN  = 60
+PKT_HEADER_LEN = 6
+PKT_PAYLOAD    = struct.Struct("<I 4i 4i 4i")   # sampleCount + vin[4] + i[4] + t[4]
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env from current working directory
+print(os.getenv("C2000_UART_BAUD"))
+def crc16_ccitt_false(data: bytes) -> int:
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
 
 
-# Global instance
-_c2000_reader: Optional[C2000SerialReader] = None
-
-
-def initialize_c2000_reader(
-    port: str = "/dev/ttyTHS1",
-    baudrate: int = 115200
-) -> bool:
-    """Initialize C2000 serial reader."""
-    global _c2000_reader
-    _c2000_reader = C2000SerialReader(port=port, baudrate=baudrate)
-    return _c2000_reader.start()
-
-
-def get_c2000_data() -> Dict:
-    """Get latest reading from C2000."""
-    if _c2000_reader:
-        data = _c2000_reader.get_latest()
-        if data:
-            return {
-                'voltage': data['voltage'],
-                'current': data['current'],
-                'temperature': data['temperature']
-            }
-    
-    # Fallback if no data
+def decode_packet(packet: bytes) -> dict:
+    sc, v0, v1, v2, v3, i0, i1, i2, i3, t0, t1, t2, t3 = PKT_PAYLOAD.unpack_from(packet, PKT_HEADER_LEN)
     return {
-        'voltage': [0, 0, 0, 0],
-        'current': [0, 0, 0, 0],
-        'temperature': [25, 25, 25, 0]
+        "sample_count": sc,
+        "voltage":     [v0/1000, v1/1000, v2/1000, v3/1000],
+        "current":     [i0/1000, i1/1000, i2/1000, i3/1000],
+        "temperature": [t0/100,  t1/100,  t2/100,  t3/100 ],
     }
 
 
-def is_c2000_connected() -> bool:
-    """Check if C2000 is connected."""
-    return _c2000_reader is not None and _c2000_reader.running
+def test_connection(port: str, baudrate: int, duration: int = 10):
+    print()
+    print("=" * 60)
+    print("  iDAQ C2000 Binary Packet — Connection Test")
+    print("=" * 60)
+    print(f"  Port     : {port}")
+    print(f"  Baud     : {baudrate}")
+    print(f"  Duration : {duration} s")
+    print("=" * 60)
 
+    # ── Step 1: Open port ──────────────────────────────────────────────────────
+    print("\n[1/4] Opening serial port...")
+    try:
+        ser = serial.Serial(
+            port=port,
+            baudrate=baudrate,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=2.0,
+        )
+        print(f"      ✅ Port open: {ser.name}")
+    except Exception as e:
+        print(f"      ❌ Failed to open port: {e}")
+        print()
+        print("  Troubleshooting:")
+        print("    sudo usermod -aG dialout $USER   (then re-login)")
+        print("    sudo systemctl stop nvgetty")
+        print("    sudo systemctl disable nvgetty")
+        sys.exit(1)
 
-def get_c2000_stats() -> Dict:
-    """Get C2000 reader statistics."""
-    if _c2000_reader:
-        return _c2000_reader.get_stats()
-    return {"connected": False}
+    # ── Step 2: Check raw bytes arriving ──────────────────────────────────────
+    print("\n[2/4] Checking raw bytes (2 s)...")
+    time.sleep(0.1)
+    raw = ser.read(256)
+    if not raw:
+        print("      ❌ No bytes received")
+        print()
+        print("  Troubleshooting:")
+        print("    - Is C2000 powered on and firmware running?")
+        print("    - Check TX wire: C2000 GPIO29 → Jetson Pin 10 (RXD)")
+        print("    - Check GND is shared between boards")
+        ser.close()
+        sys.exit(1)
+
+    print(f"      ✅ {len(raw)} bytes received")
+    print(f"      First 16 bytes: {raw[:16].hex(' ')}")
+
+    # ── Step 3: Find sync bytes ────────────────────────────────────────────────
+    print("\n[3/4] Searching for sync pattern 0xA5 0x5A...")
+    raw += ser.read(512)   # grab more data to find sync
+    sync_found = False
+    for i in range(len(raw) - 1):
+        if raw[i] == SYNC0 and raw[i+1] == SYNC1:
+            sync_found = True
+            print(f"      ✅ Sync found at byte offset {i}")
+            break
+
+    if not sync_found:
+        print("      ❌ Sync bytes 0xA5 0x5A not found in received data")
+        print()
+        print("  This means the C2000 is NOT running the new binary firmware.")
+        print("  The old CSV firmware is still flashed.")
+        print()
+        print("  Action: Flash the new binary firmware in Code Composer Studio")
+        print("          then re-run this test.")
+        print()
+        print(f"  Raw data received ({len(raw)} bytes):")
+        print(f"  {raw[:64].hex(' ')}")
+        ser.close()
+        sys.exit(1)
+
+    # ── Step 4: Decode live packets ────────────────────────────────────────────
+    print(f"\n[4/4] Decoding packets for {duration} s...\n")
+    print(f"  {'pkts':>6}  {'crc_err':>7}  {'V[0..3] V':^36}  {'I[0..3] A':^36}  {'T[0..3] °C':^36}")
+    print(f"  {'-'*6}  {'-'*7}  {'-'*36}  {'-'*36}  {'-'*36}")
+
+    buf       = bytearray(raw)   # seed with data already read
+    pkts      = 0
+    crc_errs  = 0
+    deadline  = time.time() + duration
+
+    while time.time() < deadline:
+        # Top up buffer
+        waiting = ser.in_waiting
+        if waiting:
+            buf.extend(ser.read(waiting))
+        else:
+            time.sleep(0.01)
+            continue
+
+        # Process complete packets
+        while len(buf) >= PKT_TOTAL_LEN:
+            # Find sync
+            pos = -1
+            for i in range(len(buf) - 1):
+                if buf[i] == SYNC0 and buf[i+1] == SYNC1:
+                    pos = i
+                    break
+            if pos == -1:
+                buf = buf[-1:]
+                break
+            if pos > 0:
+                buf = buf[pos:]
+            if len(buf) < PKT_TOTAL_LEN:
+                break
+
+            pkt = bytes(buf[:PKT_TOTAL_LEN])
+
+            # CRC check
+            exp = struct.unpack_from("<H", pkt, 58)[0]
+            got = crc16_ccitt_false(pkt[:58])
+            if got != exp:
+                crc_errs += 1
+                buf = buf[2:]
+                continue
+
+            buf = buf[PKT_TOTAL_LEN:]
+            d   = decode_packet(pkt)
+            pkts += 1
+
+            # Print every 500th packet (~every 0.05 s at 10 kHz) to avoid spam
+            if pkts % 500 == 0 or pkts <= 5:
+                v = [f"{x:7.3f}" for x in d["voltage"]]
+                i = [f"{x:7.3f}" for x in d["current"]]
+                t = [f"{x:6.2f}" for x in d["temperature"]]
+                print(f"  {pkts:>6}  {crc_errs:>7}  {' '.join(v)}  {' '.join(i)}  {' '.join(t)}")
+
+    ser.close()
+
+    # ── Summary ────────────────────────────────────────────────────────────────
+    print()
+    print("=" * 60)
+    print("  Test Summary")
+    print("=" * 60)
+    rate = pkts / duration
+    print(f"  Packets received : {pkts}")
+    print(f"  CRC errors       : {crc_errs}")
+    print(f"  Packet rate      : {rate:.0f} Hz  (firmware target: 10000 Hz)")
+    print()
+
+    if pkts == 0:
+        print("  ❌ FAIL — no valid packets decoded")
+        print("     Check firmware is flashed and C2000 is running")
+    elif crc_errs > pkts * 0.01:
+        print("  ⚠  WARN — CRC error rate > 1%")
+        print("     Check cable quality and length (keep under 1 m)")
+    else:
+        print("  ✅ PASS — binary stream healthy")
+        if rate < 100:
+            print(f"  ⚠  Packet rate ({rate:.0f} Hz) is low — check SAMPLE_DT_US in firmware")
+        else:
+            print(f"  ✅ Packet rate looks good ({rate:.0f} Hz)")
+
+    print()
 
 
 if __name__ == "__main__":
-    print("Testing C2000 Serial Reader...")
-    print("=" * 60)
-    
-    if initialize_c2000_reader():
-        import time
-        
-        print("Waiting for data...")
-        for i in range(10):
-            time.sleep(1)
-            stats = get_c2000_stats()
-            data = get_c2000_data()
-            print(f"  Samples: {stats['samples_received']}, "
-                  f"V: {data['voltage'][0]:.1f}V, "
-                  f"I: {data['current'][0]:.1f}A")
-    else:
-        print("❌ Failed to connect")
+    parser = argparse.ArgumentParser(description="Test C2000 binary UART stream")
+    parser.add_argument("--port", default=os.getenv("SERIAL_PORT", "/dev/ttyTHS1"))
+    parser.add_argument("--baud", type=int, default=int(os.getenv("SERIAL_BAUDRATE", "921600")))
+    parser.add_argument("--duration", type=int, default=10, help="Test duration in seconds")
+    args = parser.parse_args()
+
+    test_connection(args.port, args.baud, args.duration)
