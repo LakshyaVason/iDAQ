@@ -12,6 +12,10 @@ from collections import deque
 from typing import Dict, Optional, Callable
 from pathlib import Path
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env from current working directory
 
 class C2000SerialReader:
     """Reads real-time 12-channel ADC data from C2000 DSP via UART."""
@@ -19,7 +23,7 @@ class C2000SerialReader:
     def __init__(
         self,
         port: str = "/dev/ttyTHS1",  # Jetson Orin Nano UART1
-        baudrate: int = 115200,
+        baudrate: int = int(os.getenv("C2000_UART_BAUD")),
         callback: Optional[Callable[[Dict], None]] = None
     ):
         self.port = port
@@ -36,93 +40,61 @@ class C2000SerialReader:
         self.header_received = False
         self.last_dac_code = 0
     
+
     def parse_csv_line(self, line: str) -> Optional[Dict]:
-        """
-        Parse CSV line from C2000:
-        time_us,vin0_mV,vin1_mV,vin2_mV,vin3_mV,i0_mA,i1_mA,i2_mA,i3_mA,t0_cC,t1_cC,t2_cC,t3_cC,dac_code
-        
-        Returns dict with voltage (V), current (A), temperature (°C) arrays
-        """
         try:
             line = line.strip()
-            
-            # Skip header
-            if line.startswith('time_us') or not line:
+
+            # Skip header and empty lines
+            if not line or line.startswith('V1_mV'):
                 self.header_received = True
                 return None
-            
+
             parts = line.split(',')
-            if len(parts) < 14:  # Need all 14 fields
+            # Filter empty trailing parts (firmware adds trailing comma)
+            parts = [p for p in parts if p.strip()]
+            if len(parts) < 12:
                 return None
-            
-            # Parse fields
-            time_us = int(parts[0])
-            
-            # Voltages (mV → V)
-            vin0_mV = int(parts[1])
-            vin1_mV = int(parts[2])
-            vin2_mV = int(parts[3])
-            vin3_mV = int(parts[4])
-            
-            # Currents (mA → A)
-            i0_mA = int(parts[5])
-            i1_mA = int(parts[6])
-            i2_mA = int(parts[7])
-            i3_mA = int(parts[8])
-            
-            # Temperatures (centi-°C → °C)
-            t0_cC = int(parts[9])
-            t1_cC = int(parts[10])
-            t2_cC = int(parts[11])
-            t3_cC = int(parts[12])
-            
-            # DAC code (optional)
-            dac_code = int(parts[13]) if len(parts) > 13 else 0
-            self.last_dac_code = dac_code
-            
-            # Convert to standard units
-            voltage_V = [
-                round(vin0_mV / 1000.0, 2),
-                round(vin1_mV / 1000.0, 2),
-                round(vin2_mV / 1000.0, 2),
-                round(vin3_mV / 1000.0, 2)
-            ]
-            
-            current_A = [
-                round(i0_mA / 1000.0, 2),
-                round(i1_mA / 1000.0, 2),
-                round(i2_mA / 1000.0, 2),
-                round(i3_mA / 1000.0, 2)
-            ]
-            
-            temperature_C = [
-                round(t0_cC / 100.0, 1),
-                round(t1_cC / 100.0, 1),
-                round(t2_cC / 100.0, 1),
-                round(t3_cC / 100.0, 1)
-            ]
-            
+            vin0_mV = int(parts[0])
+            vin1_mV = int(parts[1])
+            vin2_mV = int(parts[2])
+            vin3_mV = int(parts[3])
+
+            i0_mA = int(parts[4])
+            i1_mA = int(parts[5])
+            i2_mA = int(parts[6])
+            i3_mA = int(parts[7])
+
+            t0_cC = int(parts[8])
+            t1_cC = int(parts[9])
+            t2_cC = int(parts[10])
+            t3_cC = int(parts[11])
+
             return {
-                'time_us': time_us,
-                'time_s': time_us / 1_000_000.0,
-                'raw': {
-                    'vin_mV': [vin0_mV, vin1_mV, vin2_mV, vin3_mV],
-                    'i_mA': [i0_mA, i1_mA, i2_mA, i3_mA],
-                    't_cC': [t0_cC, t1_cC, t2_cC, t3_cC],
-                    'dac': dac_code
-                },
-                'voltage': voltage_V,
-                'current': current_A,
-                'temperature': temperature_C,
-                'dac_code': dac_code
+                'voltage': [
+                    round(vin0_mV / 1000.0, 2),
+                    round(vin1_mV / 1000.0, 2),
+                    round(vin2_mV / 1000.0, 2),
+                    round(vin3_mV / 1000.0, 2),
+                ],
+                'current': [
+                    round(i0_mA / 1000.0, 2),
+                    round(i1_mA / 1000.0, 2),
+                    round(i2_mA / 1000.0, 2),
+                    round(i3_mA / 1000.0, 2),
+                ],
+                'temperature': [
+                    round(t0_cC / 100.0, 1),
+                    round(t1_cC / 100.0, 1),
+                    round(t2_cC / 100.0, 1),
+                    round(t3_cC / 100.0, 1),
+                ],
             }
-            
+
         except (ValueError, IndexError) as e:
             self.parse_errors += 1
-            if self.parse_errors % 10 == 0:  # Log every 10 errors
-                print(f"Parse error #{self.parse_errors}: {e}")
             return None
-    
+
     def _read_loop(self):
         """Background thread reading serial data."""
         line_buffer = ""
@@ -208,7 +180,7 @@ _c2000_reader: Optional[C2000SerialReader] = None
 
 def initialize_c2000_reader(
     port: str = "/dev/ttyTHS1",
-    baudrate: int = 115200
+    baudrate: int = int(os.getenv("C2000_UART_BAUD"))
 ) -> bool:
     """Initialize C2000 serial reader."""
     global _c2000_reader

@@ -26,14 +26,19 @@ echo "║                                                            ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Check Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}✗ Python 3 not found${NC}"
+# Check Python (supports both python3 and python)
+PYTHON_CMD=""
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}✗ Python not found${NC}"
     echo "Install Python 3.10 or higher"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Python found: $(python3 --version)${NC}"
+echo -e "${GREEN}✓ Python found: $($PYTHON_CMD --version)${NC}"
 
 # Check .env
 if [ ! -f ".env" ]; then
@@ -66,7 +71,7 @@ fi
 # Check if requirements are installed
 echo ""
 echo "Checking Python dependencies..."
-if ! python3 -c "import fastapi" &> /dev/null; then
+if ! $PYTHON_CMD -c "import fastapi" &> /dev/null; then
     echo "Installing dependencies..."
     pip install -r requirements.txt
     echo -e "${GREEN}✓ Dependencies installed${NC}"
@@ -88,7 +93,7 @@ fi
 
 echo "Checking for UART device: $UART_PORT"
 
-if [ -e "$UART_PORT" ]; then
+if ls "$UART_PORT" &>/dev/null || sudo ls "$UART_PORT" &>/dev/null; then
     echo -e "${GREEN}✓ UART device found: $UART_PORT${NC}"
     
     # Check permissions
@@ -112,18 +117,17 @@ if [ -e "$UART_PORT" ]; then
     # Test if data is streaming
     echo ""
     echo "Testing UART data stream (5 second timeout)..."
-    if timeout 5 head -n 5 $UART_PORT > /tmp/uart_test.txt 2>/dev/null; then
-        if grep -q "time_us" /tmp/uart_test.txt 2>/dev/null; then
-            echo -e "${GREEN}✓ C2000 CSV data detected!${NC}"
-            echo "Sample data:"
-            head -n 2 /tmp/uart_test.txt | sed 's/^/  /'
+    stty -F $UART_PORT 921600 2>/dev/null
+    if timeout 5 dd if=$UART_PORT of=/tmp/uart_test.bin bs=1 count=120 2>/dev/null; then
+        if xxd /tmp/uart_test.bin 2>/dev/null | grep -q "a5 5a"; then
+            echo -e "${GREEN}✓ C2000 binary packet stream detected!${NC}"
             C2000_CONNECTED=true
         else
-            echo -e "${YELLOW}⚠ Data received but format not recognized${NC}"
-            echo "Expected CSV format: time_us,vin0_mV,...,t3_cC,dac_code"
+            echo -e "${YELLOW}⚠ Data received but binary sync bytes (0xA5 0x5A) not found${NC}"
+            echo "  C2000 may still be running old firmware — flash the new binary firmware"
             C2000_CONNECTED=false
         fi
-        rm -f /tmp/uart_test.txt
+        rm -f /tmp/uart_test.bin
     else
         echo -e "${YELLOW}⚠ No data received from $UART_PORT${NC}"
         echo "Possible issues:"
@@ -170,7 +174,7 @@ if [ -f "diagnose.py" ]; then
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  System Diagnostics${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    python3 diagnose.py
+    $PYTHON_CMD diagnose.py
 
     if [ $? -ne 0 ]; then
         echo ""
@@ -229,7 +233,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     
     # Start server
-    python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    $PYTHON_CMD -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 else
     echo ""
     echo "To start the server manually, run:"
@@ -239,5 +243,5 @@ else
     echo -e "${GREEN}  uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4${NC}"
     echo ""
     echo "To test C2000 connection directly:"
-    echo -e "${GREEN}  python3 c2000_serial_reader.py${NC}"
+    echo -e "${GREEN}  $PYTHON_CMD c2000_serial_reader.py${NC}"
 fi
