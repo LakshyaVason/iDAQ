@@ -73,7 +73,21 @@ class LiveDataLoader:
                 d = self.data[idx]
                 t = self.unique_times[idx]
                 print(f"   t={t:.4f}s: Vin={d['voltage'][0]:.1f}V, MOSFET={d['voltage'][1]:.1f}V")
-    
+    def get_next_batch(self, n: int = 50) -> List[Dict]:
+        """Return the next n samples as a list for waveform-accurate display."""
+        if not self.data:
+            raise ValueError("No data loaded")
+        batch = []
+        for _ in range(n):
+            reading = self.data[self.current_index]
+            batch.append({
+                'voltage':     reading['voltage'],
+                'current':     reading['current'],
+                'temperature': reading['temperature'],
+            })
+            self.current_index = (self.current_index + 1) % len(self.data)
+        return batch
+
     def get_next_reading(self) -> Dict:
         """Get next data point (advances to next unique TIME)."""
         if not self.data:
@@ -182,7 +196,22 @@ def get_live_data() -> Dict:
             'temperature': [round(random.uniform(30, 50), 2), round(random.uniform(28, 40), 2), 25, 0]
         }
 
-
+def get_live_batch(n: int = 50) -> List[Dict]:
+    """Get next batch of n readings for waveform display."""
+    if _data_loader:
+        return _data_loader.get_next_batch(n)
+    # Fallback simulation batch
+    import random, math
+    batch = []
+    for i in range(n):
+        t = (random.random() * 2 * math.pi) + (i * 0.1)
+        batch.append({
+            'voltage':     [round(192 * math.sin(t), 2), 0, 0, 0],
+            'current':     [round(10.5 + math.sin(t) * 2, 2), 0, 0, 0],
+            'temperature': [round(35 + random.uniform(-2, 2), 1), 25, 25, 0],
+        })
+    return batch
+   
 def get_loader_info() -> Dict:
     """Get information about the data loader."""
     if _data_loader:

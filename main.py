@@ -1,5 +1,6 @@
 """
 Complete FastAPI server for iDAQ diagnostics with OpenAI and Firebase integration.
+Now with C2000 UART integration.
 """
 
 import os
@@ -21,7 +22,29 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ai_agent import DiagnosticsAgent
 
-from live_data_loader import initialize_data_loader, get_live_data, get_loader_info
+# Try to import C2000 serial reader first, fallback to CSV loader
+try:
+    from c2000_serial_reader import (
+        initialize_c2000_reader, 
+        get_c2000_data, 
+        is_c2000_connected,
+        get_c2000_stats,
+        get_c2000_reader_recent 
+    )
+    C2000_AVAILABLE = True
+except ImportError:
+    C2000_AVAILABLE = False
+    print("⚠️ c2000_serial_reader not found - will use CSV fallback")
+
+# CSV data loader as fallback
+
+from live_data_loader import initialize_data_loader, get_live_data, get_loader_info, get_live_batch
+try:
+    from live_data_loader import initialize_data_loader, get_live_data, get_loader_info
+    CSV_AVAILABLE = initialize_data_loader()
+except ImportError:
+    CSV_AVAILABLE = False
+    print("⚠️ live_data_loader not found - will use simulation")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,9 +58,6 @@ DATASHEETS_DIR = BASE_DIR / "datasheets"
 DATASHEETS_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Initialize live data loader
-LIVE_DATA_AVAILABLE = initialize_data_loader()
-
 # Firebase setup
 firebase_app: Optional[firebase_admin.App] = None
 firebase_available: bool = False
@@ -48,6 +68,9 @@ agent = DiagnosticsAgent()
 
 # Global pause state for data streaming
 data_streaming_paused = False
+
+# Data source tracking
+current_data_source = "unknown"  # Will be set to "c2000", "csv", or "simulation"
 
 app = FastAPI(title="iDAQ Diagnostics Server")
 
@@ -196,7 +219,9 @@ def get_user_sessions(user_id: str, limit: int = 10) -> List[Dict]:
 
 @app.on_event("startup")
 async def startup_event():
-    """Startup checks."""
+    """Startup checks and initialization."""
+    global current_data_source
+    
     logger.info("=" * 60)
     logger.info("iDAQ Diagnostics Server Starting Up")
     logger.info("=" * 60)
@@ -208,13 +233,32 @@ async def startup_event():
     else:
         logger.info("✅ OpenAI API key configured")
     
-    # Check live data
-    if LIVE_DATA_AVAILABLE:
-        info = get_loader_info()
-        logger.info(f"✅ Live data loaded: {info['source_file']} ({info['total_points']} points)")
+    # Initialize data source (priority: C2000 → CSV → Simulation)
+    if C2000_AVAILABLE:
+        # Try to connect to C2000 via UART
+        uart_port = os.getenv("C2000_UART_PORT", "/dev/ttyTHS1")
+        uart_baud = int(os.getenv("C2000_UART_BAUD", "115200"))
+        
+        logger.info(f"🔌 Attempting C2000 connection on {uart_port} @ {uart_baud} baud...")
+        
+        if initialize_c2000_reader(port=uart_port, baudrate=uart_baud):
+            current_data_source = "c2000"
+            logger.info("✅ C2000 UART connected - using live hardware data")
+        else:
+            logger.warning("⚠️ C2000 connection failed - falling back to CSV/simulation")
+            current_data_source = "csv" if CSV_AVAILABLE else "simulation"
     else:
-        logger.warning("⚠️ No CSV data found - using simulation mode")
-        logger.warning("   Place 'VinIinMOSFETVdsSCRVds_240_ALL.csv' in project root for live data")
+        current_data_source = "csv" if CSV_AVAILABLE else "simulation"
+    
+    # Log CSV status
+    if CSV_AVAILABLE and current_data_source != "c2000":
+        try:
+            info = get_loader_info()
+            logger.info(f"✅ CSV data loaded: {info['source_file']} ({info['total_points']} points)")
+        except:
+            logger.warning("⚠️ CSV loader available but no data loaded")
+    elif current_data_source == "simulation":
+        logger.warning("⚠️ Using simulation mode - random data generation")
     
     # Check Firebase
     try:
@@ -224,6 +268,7 @@ async def startup_event():
         logger.warning(f"⚠️ Firebase initialization failed: {e}")
         logger.warning("Firebase features will be disabled")
     
+    logger.info(f"📊 Active data source: {current_data_source.upper()}")
     logger.info("=" * 60)
 
 
@@ -387,36 +432,96 @@ async def user_page():
 
 
 def _generate_channels(base: float, spread: float, count: int = 4) -> list:
-    """Generate random sensor values."""
+    """Generate random sensor values for simulation mode."""
     return [round(random.uniform(base - spread, base + spread), 2) for _ in range(count)]
 
 
 @app.get("/sensor-data")
 async def sensor_data() -> dict:
     """
-    Get sensor data - uses live CSV data if available, otherwise simulation.
-    Returns cached/paused data when streaming is paused.
+    Get sensor data with automatic source selection:
+    1. C2000 UART (if connected)
+    2. CSV playback (if available)
+    3. Simulation (fallback)
+    
+    Returns 12 channels: 4 voltages, 4 currents, 4 temperatures
     """
-    global data_streaming_paused
+    global data_streaming_paused, current_data_source
     
     if data_streaming_paused:
-        # Return status indicating paused state
         return {"paused": True}
     
-    if LIVE_DATA_AVAILABLE:
-        # Use real data from CSV
-        data = get_live_data()
-    else:
-        # Fallback to random simulation
-        data = {
-            "voltage": _generate_channels(300.0, 15.0),
-            "current": _generate_channels(15.0, 4.0),
-            "temperature": _generate_channels(45.0, 20.0),
-        }
+    # Priority 1: C2000 hardware
+    if current_data_source == "c2000" and C2000_AVAILABLE:
+        try:
+            if is_c2000_connected():
+                data = get_c2000_data()
+                data["paused"] = False
+                data["source"] = "c2000"
+                return data
+            else:
+                logger.warning("C2000 disconnected, switching to fallback")
+                current_data_source = "csv" if CSV_AVAILABLE else "simulation"
+        except Exception as e:
+            logger.error(f"C2000 read error: {e}")
+            current_data_source = "csv" if CSV_AVAILABLE else "simulation"
     
-    data["paused"] = False
+    # Priority 2: CSV playback
+    if current_data_source == "csv" and CSV_AVAILABLE:
+        try:
+            data = get_live_data()
+            data["paused"] = False
+            data["source"] = "csv"
+            return data
+        except Exception as e:
+            logger.error(f"CSV read error: {e}")
+            current_data_source = "simulation"
+    
+    # Priority 3: Simulation
+    data = {
+        "voltage": _generate_channels(300.0, 15.0),
+        "current": _generate_channels(15.0, 4.0),
+        "temperature": _generate_channels(45.0, 20.0),
+        "paused": False,
+        "source": "simulation"
+    }
     return data
 
+@app.get("/sensor-data-batch")
+async def sensor_data_batch(n: int = 50) -> dict:
+    """
+    Get a batch of n sensor readings for waveform-accurate display.
+    Returns array of samples so frontend can plot full AC waveform shape.
+    n is capped at 200 to prevent oversized responses.
+    """
+    global data_streaming_paused, current_data_source
+
+    if data_streaming_paused:
+        return {"paused": True, "samples": []}
+
+    n = min(n, 200)  # safety cap
+
+    # C2000 live: return n individual readings from buffer
+    if current_data_source == "c2000" and C2000_AVAILABLE:
+        try:
+            if is_c2000_connected():
+                recent = get_c2000_reader_recent(n)  # see note below
+                if recent:
+                    return {"paused": False, "source": "c2000", "samples": recent}
+        except Exception as e:
+            logger.error(f"C2000 batch read error: {e}")
+
+    # CSV playback: return batch
+    if current_data_source == "csv" and CSV_AVAILABLE:
+        try:
+            samples = get_live_batch(n)
+            return {"paused": False, "source": "csv", "samples": samples}
+        except Exception as e:
+            logger.error(f"CSV batch read error: {e}")
+
+    # Simulation fallback
+    samples = get_live_batch(n)
+    return {"paused": False, "source": "simulation", "samples": samples}
 
 @app.post("/pause-streaming")
 async def pause_streaming():
@@ -527,7 +632,8 @@ async def save_session(request: Request, user: dict = Depends(verify_firebase_to
             "chat_history": data.get("chatHistory", []),
             "start_time": data.get("startTime"),
             "end_time": data.get("endTime"),
-            "mode": data.get("mode", "live")
+            "mode": data.get("mode", "live"),
+            "data_source": current_data_source
         }
         
         save_session_data(user.get("uid"), session_info)
@@ -574,18 +680,64 @@ async def delete_session(session_id: str, user: dict = Depends(verify_firebase_t
 
 @app.get("/health")
 async def health_check():
-    """Health check."""
-    global data_streaming_paused
-    loader_info = get_loader_info() if LIVE_DATA_AVAILABLE else {"loaded": False}
+    """Health check with data source info."""
+    global data_streaming_paused, current_data_source
     
-    return {
+    health_info = {
         "status": "ok",
         "openai": "configured" if os.getenv("OPENAI_API_KEY") else "missing",
         "firebase": "configured" if firebase_app else "not configured",
         "vector_store": "loaded" if agent.vector_store else "empty",
-        "live_data": loader_info,
+        "data_source": current_data_source,
         "streaming_paused": data_streaming_paused
     }
+    
+    # Add C2000 stats if available
+    if C2000_AVAILABLE and current_data_source == "c2000":
+        try:
+            health_info["c2000_stats"] = get_c2000_stats()
+        except:
+            pass
+    
+    # Add CSV info if available
+    if CSV_AVAILABLE and current_data_source == "csv":
+        try:
+            health_info["csv_info"] = get_loader_info()
+        except:
+            pass
+    
+    return health_info
+
+
+@app.get("/data-source")
+async def get_data_source():
+    """Get current data source information."""
+    global current_data_source
+    
+    info = {
+        "current_source": current_data_source,
+        "available_sources": []
+    }
+    
+    if C2000_AVAILABLE:
+        info["available_sources"].append({
+            "name": "c2000",
+            "connected": is_c2000_connected() if current_data_source == "c2000" else False,
+            "description": "Live C2000 DSP via UART"
+        })
+    
+    if CSV_AVAILABLE:
+        info["available_sources"].append({
+            "name": "csv",
+            "description": "CSV file playback"
+        })
+    
+    info["available_sources"].append({
+        "name": "simulation",
+        "description": "Random data generation"
+    })
+    
+    return info
 
 
 @app.exception_handler(404)
