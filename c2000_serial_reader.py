@@ -177,6 +177,12 @@ class C2000SerialReader:
 # Global instance
 _c2000_reader: Optional[C2000SerialReader] = None
 
+def get_c2000_reader_recent(n: int = 50) -> list:
+    """Return last n decoded packets from the C2000 buffer."""
+    if _c2000_reader:
+        return _c2000_reader.get_recent(n)
+    return []
+
 
 def initialize_c2000_reader(
     port: str = "/dev/ttyTHS1",

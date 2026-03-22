@@ -28,7 +28,8 @@ try:
         initialize_c2000_reader, 
         get_c2000_data, 
         is_c2000_connected,
-        get_c2000_stats
+        get_c2000_stats,
+        get_c2000_reader_recent 
     )
     C2000_AVAILABLE = True
 except ImportError:
@@ -36,6 +37,8 @@ except ImportError:
     print("⚠️ c2000_serial_reader not found - will use CSV fallback")
 
 # CSV data loader as fallback
+
+from live_data_loader import initialize_data_loader, get_live_data, get_loader_info, get_live_batch
 try:
     from live_data_loader import initialize_data_loader, get_live_data, get_loader_info
     CSV_AVAILABLE = initialize_data_loader()
@@ -484,6 +487,41 @@ async def sensor_data() -> dict:
     }
     return data
 
+@app.get("/sensor-data-batch")
+async def sensor_data_batch(n: int = 50) -> dict:
+    """
+    Get a batch of n sensor readings for waveform-accurate display.
+    Returns array of samples so frontend can plot full AC waveform shape.
+    n is capped at 200 to prevent oversized responses.
+    """
+    global data_streaming_paused, current_data_source
+
+    if data_streaming_paused:
+        return {"paused": True, "samples": []}
+
+    n = min(n, 200)  # safety cap
+
+    # C2000 live: return n individual readings from buffer
+    if current_data_source == "c2000" and C2000_AVAILABLE:
+        try:
+            if is_c2000_connected():
+                recent = get_c2000_reader_recent(n)  # see note below
+                if recent:
+                    return {"paused": False, "source": "c2000", "samples": recent}
+        except Exception as e:
+            logger.error(f"C2000 batch read error: {e}")
+
+    # CSV playback: return batch
+    if current_data_source == "csv" and CSV_AVAILABLE:
+        try:
+            samples = get_live_batch(n)
+            return {"paused": False, "source": "csv", "samples": samples}
+        except Exception as e:
+            logger.error(f"CSV batch read error: {e}")
+
+    # Simulation fallback
+    samples = get_live_batch(n)
+    return {"paused": False, "source": "simulation", "samples": samples}
 
 @app.post("/pause-streaming")
 async def pause_streaming():

@@ -981,7 +981,7 @@
         let sessionData = [];
         let chatHistory = [];
         let ragMode = false;
-        const MAX_POINTS = 100;
+        const MAX_POINTS = 500;
 
         document.addEventListener('auth-changed', (event) => {
             currentUser = event.detail.user;
@@ -1230,68 +1230,68 @@
         }
 
         async function fetchSensorData() {
-            if (isPaused) {
-                // Don't fetch new data when paused
-                return;
-            }
-            if (!monitoring) return;
+    if (isPaused || !monitoring) return;
 
-            try {
-                // In simulation mode, use CSV data without auth
-                // In live mode, fetch from server with auth
-                let data;
+    try {
+        const url = `/sensor-data-batch?n=50`;
+        const response = simulation
+            ? await fetch(url)
+            : await authFetch(url);
+        const data = await response.json();
 
-                if (simulation) {
-                    // Simulation mode: fetch CSV data without requiring auth
-                    const response = await fetch('/sensor-data');
-                    data = await response.json();
-                } else {
-                    // Live mode: requires authentication
-                    data = await authFetch('/sensor-data').then(resp => resp.json());
-                }
+        if (data.paused || !data.samples || data.samples.length === 0) return;
 
-                latestReadings = {
-                    voltage: data.voltage,
-                    current: data.current,
-                    temperature: data.temperature
-                };
+        const samples = data.samples;
 
-                renderLatestValues();
+        // Update latest readings from last sample
+        const last = samples[samples.length - 1];
+        latestReadings = {
+            voltage:     last.voltage,
+            current:     last.current,
+            temperature: last.temperature,
+        };
+        renderLatestValues();
 
-                const timestamp = new Date();
-                const timeStr = timestamp.toLocaleTimeString();
-                const timestampLocal = timestamp.toLocaleString([], {
-                    hour12: false,
-                    timeZoneName: 'short'
-                });
+        // Push all samples onto chart at once
+        const now = new Date();
+        samples.forEach((s, i) => {
+            // Spread timestamps evenly across the fetch interval (200ms / 50 samples = 4ms apart)
+            const sampleTime = new Date(now - (samples.length - 1 - i) * 4);
+            const timeStr = sampleTime.toLocaleTimeString('en-US', { hour12: false }) +
+                            '.' + String(sampleTime.getMilliseconds()).padStart(3, '0');
 
-                sessionData.push({
-                    timestamp: timestampLocal,
-                    time: timeStr,
-                    voltage: data.voltage,
-                    current: data.current,
-                    temperature: data.temperature
-                });
+            chart.data.labels.push(timeStr);
+            channels.forEach((ch, idx) => {
+                const value = s[ch.type]?.[ch.index] ?? null;
+                chart.data.datasets[idx].data.push(channelState[ch.id] ? value : null);
+            });
+        });
 
-                chart.data.labels.push(timeStr);
-                channels.forEach((ch, idx) => {
-                    const value = data[ch.type]?.[ch.index] ?? null;
-                    chart.data.datasets[idx].data.push(channelState[ch.id] ? value : null);
-                });
+        // Store one entry per fetch in sessionData (not per sample, keeps session lean)
+        const timestampLocal = now.toLocaleString([], { hour12: false, timeZoneName: 'short' });
+        sessionData.push({
+            timestamp: timestampLocal,
+            time:      now.toLocaleTimeString(),
+            voltage:   last.voltage,
+            current:   last.current,
+            temperature: last.temperature,
+        });
 
-                if (chart.data.labels.length > MAX_POINTS) {
-                    chart.data.labels.shift();
-                    chart.data.datasets.forEach(ds => ds.data.shift());
-                }
-
-                chart.update();
-                updateStatusBar();
-            } catch (error) {
-                console.error('Sensor data error:', error);
-                stopMonitoring();
-                document.getElementById('statusBar').textContent = 'Sensor data error - check connection';
-            }
+        // Trim chart to MAX_POINTS
+        while (chart.data.labels.length > MAX_POINTS) {
+            chart.data.labels.shift();
+            chart.data.datasets.forEach(ds => ds.data.shift());
         }
+
+        chart.update('none');  // 'none' skips animation — critical at high update rate
+        updateStatusBar();
+
+    } catch (error) {
+        console.error('Sensor data error:', error);
+        stopMonitoring();
+        document.getElementById('statusBar').textContent = 'Sensor data error - check connection';
+    }
+}
 
         function updateStatusBar() {
             if (!monitoring) return;
