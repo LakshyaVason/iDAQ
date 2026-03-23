@@ -19,6 +19,7 @@ import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from scipy import stats
 
 from ai_agent import DiagnosticsAgent
 
@@ -39,6 +40,8 @@ except ImportError:
 # CSV data loader as fallback
 
 from live_data_loader import initialize_data_loader, get_live_data, get_loader_info, get_live_batch
+from firebase_pusher import start_firebase_pusher, stop_firebase_pusher, get_pusher_stats
+
 try:
     from live_data_loader import initialize_data_loader, get_live_data, get_loader_info
     CSV_AVAILABLE = initialize_data_loader()
@@ -269,7 +272,41 @@ async def startup_event():
         logger.warning("Firebase features will be disabled")
     
     logger.info(f"📊 Active data source: {current_data_source.upper()}")
+    # Start Firebase RTDB pusher (remote monitoring on phone)
+    if os.getenv("FIREBASE_DATABASE_URL"):
+        def _get_current_data():
+            """Get latest sensor reading for Firebase push."""
+            if current_data_source == "c2000" and C2000_AVAILABLE:
+                try:
+                    data = get_c2000_data()
+                    data["source"] = "c2000"
+                    return data
+                except Exception:
+                    pass
+            if current_data_source == "csv" and CSV_AVAILABLE:
+                try:
+                    data = get_live_data()
+                    data["source"] = "csv"
+                    return data
+                except Exception:
+                    pass
+            return {
+                "voltage": _generate_channels(300.0, 15.0),
+                "current": _generate_channels(15.0, 4.0),
+                "temperature": _generate_channels(45.0, 20.0),
+                "source": "simulation",
+            }
+ 
+        if start_firebase_pusher(data_fn=_get_current_data):
+            logger.info("✅ Firebase RTDB pusher started — remote monitoring active")
+        else:
+            logger.warning("⚠️ Firebase pusher failed — check FIREBASE_DATABASE_URL and serviceAccountKey.json")
+    else:
+        logger.info("ℹ️  FIREBASE_DATABASE_URL not set — remote monitoring disabled")
+ 
     logger.info("=" * 60)
+
+
 
 
 # ===== Authentication Endpoints =====
@@ -705,7 +742,12 @@ async def health_check():
             health_info["csv_info"] = get_loader_info()
         except:
             pass
-    
+     #Firebase pusher stats
+    if os.getenv("FIREBASE_DATABASE_URL"):
+        try:
+            health_info["firebase_pusher"] = get_pusher_stats()
+        except Exception:
+            pass
     return health_info
 
 

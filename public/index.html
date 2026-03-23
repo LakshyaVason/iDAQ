@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>iDAQ Remote Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f7fa;
+      color: #2c3e50;
+    }
+
+    nav {
+      background: #2c3e50;
+      padding: 1rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    nav .brand { color: #fff; font-size: 1.2rem; font-weight: 600; }
+
+    #statusPill {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    #statusPill.live    { background: #27ae60; color: #fff; }
+    #statusPill.offline { background: #e74c3c; color: #fff; }
+    #statusPill.waiting { background: #f39c12; color: #fff; }
+
+    .container { padding: 1rem; max-width: 600px; margin: 0 auto; }
+
+    /* Latest value cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      border-left: 4px solid;
+    }
+    .card.voltage     { border-color: #e74c3c; }
+    .card.current     { border-color: #3498db; }
+    .card.temperature { border-color: #f39c12; }
+    .card.status-card { border-color: #9b59b6; }
+
+    .card .label { font-size: 0.7rem; color: #7f8c8d; font-weight: 600; text-transform: uppercase; margin-bottom: 0.2rem; }
+    .card .value { font-size: 1.5rem; font-weight: 700; }
+    .card .unit  { font-size: 0.75rem; color: #7f8c8d; margin-left: 0.2rem; }
+
+    /* Chart panels */
+    .chart-panel {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 0.75rem;
+    }
+
+    .chart-panel h3 {
+      font-size: 0.8rem;
+      color: #7f8c8d;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 0.75rem;
+    }
+
+    .chart-wrap { position: relative; height: 160px; }
+
+    /* Meta info */
+    .meta {
+      background: #fff;
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+      color: #7f8c8d;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .meta span strong { color: #2c3e50; }
+
+    footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #bdc3c7;
+      padding: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">⚡ iDAQ Remote</div>
+  <span id="statusPill" class="waiting">Connecting…</span>
+</nav>
+
+<div class="container">
+
+  <!-- Latest value tiles -->
+  <div class="cards">
+    <div class="card voltage">
+      <div class="label">V1 (Vin)</div>
+      <div class="value" id="v0">—<span class="unit">V</span></div>
+    </div>
+    <div class="card voltage">
+      <div class="label">V2</div>
+      <div class="value" id="v1">—<span class="unit">V</span></div>
+    </div>
+    <div class="card current">
+      <div class="label">I1 (Iin)</div>
+      <div class="value" id="i0">—<span class="unit">A</span></div>
+    </div>
+    <div class="card current">
+      <div class="label">I2</div>
+      <div class="value" id="i1">—<span class="unit">A</span></div>
+    </div>
+    <div class="card temperature">
+      <div class="label">T1 (MOSFET)</div>
+      <div class="value" id="t0">—<span class="unit">°C</span></div>
+    </div>
+    <div class="card temperature">
+      <div class="label">T2 (SCR)</div>
+      <div class="value" id="t1">—<span class="unit">°C</span></div>
+    </div>
+  </div>
+
+  <!-- Meta row -->
+  <div class="meta">
+    <span>Source: <strong id="metaSource">—</strong></span>
+    <span>Samples: <strong id="metaCount">—</strong></span>
+    <span>Uptime: <strong id="metaUptime">—</strong></span>
+    <span>Updated: <strong id="metaTime">—</strong></span>
+  </div>
+
+  <!-- Voltage chart -->
+  <div class="chart-panel">
+    <h3>Voltage (V)</h3>
+    <div class="chart-wrap"><canvas id="voltChart"></canvas></div>
+  </div>
+
+  <!-- Current chart -->
+  <div class="chart-panel">
+    <h3>Current (A)</h3>
+    <div class="chart-wrap"><canvas id="currChart"></canvas></div>
+  </div>
+
+  <!-- Temperature chart -->
+  <div class="chart-panel">
+    <h3>Temperature (°C)</h3>
+    <div class="chart-wrap"><canvas id="tempChart"></canvas></div>
+  </div>
+
+</div>
+
+<footer>iDAQ Diagnostics · PQ Lab · idaq-diagnostics.web.app</footer>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp }             from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ── Your Firebase config (from firebase.txt) ──────────────────────────────
+  const firebaseConfig = {
+    apiKey:            "AIzaSyACVR4YFiiLR_EPWE0Etm6XyH4KL4E6g3M",
+    authDomain:        "idaq-diagnostics.firebaseapp.com",
+    databaseURL:       "https://idaq-diagnostics-default-rtdb.firebaseio.com",
+    projectId:         "idaq-diagnostics",
+    storageBucket:     "idaq-diagnostics.firebasestorage.app",
+    messagingSenderId: "546994599146",
+    appId:             "1:546994599146:web:8a644aef76521a088e9393",
+    measurementId:     "G-HB17VBX2XD",
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  // ── Charts ─────────────────────────────────────────────────────────────────
+  const MAX_PTS = 60;
+
+  function makeChart(id, labels, colors) {
+    return new Chart(document.getElementById(id).getContext("2d"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: labels.map((lbl, i) => ({
+          label:           lbl,
+          data:            [],
+          borderColor:     colors[i],
+          backgroundColor: colors[i] + "22",
+          borderWidth:     1.5,
+          pointRadius:     0,
+          tension:         0.3,
+        })),
+      },
+      options: {
+        animation:         false,
+        responsive:        true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#7f8c8d", boxWidth: 10, font: { size: 10 } } } },
+        scales: {
+          x: { display: false },
+          y: { ticks: { color: "#7f8c8d", font: { size: 10 } }, grid: { color: "#ecf0f1" } },
+        },
+      },
+    });
+  }
+
+  const voltChart = makeChart("voltChart",
+    ["V1", "V2", "V3", "V4"],
+    ["#e74c3c", "#c0392b", "#e67e22", "#d35400"]);
+
+  const currChart = makeChart("currChart",
+    ["I1", "I2", "I3", "I4"],
+    ["#3498db", "#2980b9", "#1abc9c", "#16a085"]);
+
+  const tempChart = makeChart("tempChart",
+    ["T1", "T2", "T3", "T4"],
+    ["#f39c12", "#e67e22", "#f1c40f", "#d4ac0d"]);
+
+  function pushChart(chart, values) {
+    const label = new Date().toLocaleTimeString("en-US", { hour12: false });
+    chart.data.labels.push(label);
+    if (chart.data.labels.length > MAX_PTS) chart.data.labels.shift();
+
+    values.forEach((v, i) => {
+      chart.data.datasets[i].data.push(v ?? null);
+      if (chart.data.datasets[i].data.length > MAX_PTS)
+        chart.data.datasets[i].data.shift();
+    });
+    chart.update("none");
+  }
+
+  // ── Helper: update a value tile ────────────────────────────────────────────
+  function setTile(id, value, decimals = 2) {
+    const el  = document.getElementById(id);
+    const num = typeof value === "number" ? value.toFixed(decimals) : "—";
+    // Keep the <span class="unit"> inside — replace only the text node
+    el.childNodes[0].textContent = num;
+  }
+
+  // ── Firebase listener ──────────────────────────────────────────────────────
+  const pill    = document.getElementById("statusPill");
+  const liveRef = ref(db, "live");
+
+  onValue(liveRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    // Status pill
+    pill.className   = "live";
+    pill.textContent = "● Live";
+
+    // Value tiles
+    const v = data.voltage     || [0,0,0,0];
+    const i = data.current     || [0,0,0,0];
+    const t = data.temperature || [0,0,0,0];
+
+    setTile("v0", v[0]);  setTile("v1", v[1]);
+    setTile("i0", i[0]);  setTile("i1", i[1]);
+    setTile("t0", t[0], 1); setTile("t1", t[1], 1);
+
+    // Charts
+    pushChart(voltChart, v);
+    pushChart(currChart, i);
+    pushChart(tempChart, t);
+
+    // Meta row
+    document.getElementById("metaSource").textContent  = data.source       || "—";
+    document.getElementById("metaCount").textContent   = data.sample_count ?? "—";
+    document.getElementById("metaUptime").textContent  =
+      data.uptime_s != null ? `${data.uptime_s}s` : "—";
+    document.getElementById("metaTime").textContent    =
+      new Date().toLocaleTimeString();
+
+  }, (err) => {
+    pill.className   = "offline";
+    pill.textContent = "● Offline";
+    console.error("Firebase error:", err);
+  });
+
+  // Mark as waiting if no data after 5s
+  setTimeout(() => {
+    if (pill.classList.contains("waiting")) {
+      pill.className   = "offline";
+      pill.textContent = "● No data";
+    }
+  }, 5000);
+</script>
+
+</body>
+</html>

@@ -45,3 +45,6 @@ pypdf2
 
 #data streaming
 pyserial
+
+google-auth 
+google-auth-requests
