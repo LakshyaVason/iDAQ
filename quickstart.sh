@@ -147,7 +147,32 @@ else
     echo ""
     C2000_CONNECTED=false
 fi
+# Ask if user wants to start session logger
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}  DSP Session Logger${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
+if [ -f "dsp_session_logger.py" ]; then
+    echo "Session logger found. This captures raw UART data to timestamped CSV files"
+    echo "for debugging gain equations."
+    echo ""
+    read -p "Start session logger alongside the server? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        UART_BAUD=$(grep "^C2000_UART_BAUD=" .env 2>/dev/null | cut -d= -f2)
+        if [ -z "$UART_BAUD" ]; then
+            UART_BAUD="460800"
+        fi
+        echo -e "${GREEN}✓ Session logger will start with port=$UART_PORT baud=$UART_BAUD${NC}"
+        START_LOGGER=true
+    else
+        START_LOGGER=false
+    fi
+else
+    echo -e "${YELLOW}⚠ dsp_session_logger.py not found - skipping${NC}"
+    START_LOGGER=false
+fi
 # Check for CSV fallback data
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -232,8 +257,23 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
     echo ""
     
+    if [ "$START_LOGGER" = true ]; then
+        echo -e "${BLUE}Starting DSP session logger in background...${NC}"
+        $PYTHON_CMD dsp_session_logger.py --port "$UART_PORT" --baud "$UART_BAUD" &
+        LOGGER_PID=$!
+        echo -e "${GREEN}✓ Logger running (PID $LOGGER_PID) → logs saved to dsp_logs/${NC}"
+        echo ""
+    fi
+
     # Start server
     $PYTHON_CMD -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+    if [ "$START_LOGGER" = true ] && kill -0 "$LOGGER_PID" 2>/dev/null; then
+        echo ""
+        echo -e "${YELLOW}Stopping session logger (PID $LOGGER_PID)...${NC}"
+        kill "$LOGGER_PID"
+    fi
+    
 else
     echo ""
     echo "To start the server manually, run:"
