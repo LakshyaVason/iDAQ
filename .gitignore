@@ -10,6 +10,7 @@ __pycache__/
 serviceAccountKey.json
 .env
 firebase-key.json
+firebase.txt
 
 #Measurement File
 VinIinMOSFETVdsSCRVds_240_ALL.csv
