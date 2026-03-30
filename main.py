@@ -7,6 +7,7 @@ import os
 import json
 import random
 import logging
+import joblib
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -459,7 +460,62 @@ async def train_models(request: Request):
     
     return {"messages": messages}
 
+@app.post("/train-baseline")
+async def train_baseline_endpoint(request: Request):
+    """Run train_baseline.py and return results."""
+    if not is_admin(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
 
+    import subprocess, sys
+    baseline_script = BASE_DIR / "train_baseline.py"
+
+    if not baseline_script.exists():
+        return JSONResponse({"error": "train_baseline.py not found in project root"}, status_code=404)
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(baseline_script)],
+            capture_output=True,
+            text=True,
+            timeout=300,   # 5 min max
+            cwd=str(BASE_DIR)
+        )
+
+        if result.returncode != 0:
+            return JSONResponse({
+                "error": f"Script exited with code {result.returncode}",
+                "detail": result.stderr[-2000:] if result.stderr else "No stderr"
+            }, status_code=500)
+
+        # Parse the saved profile for structured response
+        profile_path = BASE_DIR / "artifacts" / "operating_profile.json"
+        profile = {}
+        if profile_path.exists():
+            import json as _json
+            profile = _json.loads(profile_path.read_text())
+
+        # Also hot-reload the baseline into the live agent
+        baseline_path = BASE_DIR / "artifacts" / "anomaly_baseline.joblib"
+        if baseline_path.exists():
+            art = joblib.load(baseline_path)
+            agent.anomaly_stats = art["baseline"]
+            logger.info(f"✅ Anomaly baseline hot-reloaded: {len(art['baseline'])} features")
+
+        return {
+            "message": "✅ Baseline training complete. Anomaly detector updated.",
+            "files_loaded": len(profile.get("voltage_levels", [])),
+            "total_rows": None,   # not tracked in profile, visible in server log
+            "features": profile.get("features", []),
+            "openai_summary": profile.get("openai_confirmation", "")[:800]
+        }
+
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"error": "Script timed out after 5 minutes"}, status_code=500)
+    except Exception as exc:
+        logger.error(f"train_baseline error: {exc}", exc_info=True)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+        
 # ===== User Endpoints =====
 
 @app.get("/user", response_class=HTMLResponse)
