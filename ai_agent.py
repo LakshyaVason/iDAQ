@@ -400,7 +400,7 @@ Answer (be specific and cite information from the datasheets):"""
                     {"role": "system", "content": "You are a technical documentation expert. Answer based only on the provided context."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
+                temperature=0.2,
                 max_tokens=800
             )
 
