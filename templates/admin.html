@@ -10,12 +10,23 @@
         h1 { margin-bottom: 1rem; }
         form { margin-bottom: 1rem; }
         input[type="file"] { margin-bottom: 0.5rem; }
-        button { padding: 0.5rem 1rem; }
-        .message { padding: 0.5rem; margin-top: 0.5rem; border: 1px solid #ccc; }
+        button { padding: 0.5rem 1rem; cursor: pointer; }
+        .message { padding: 0.5rem; margin-top: 0.5rem; border: 1px solid #ccc; border-radius: 4px; white-space: pre-wrap; font-family: monospace; font-size: 0.875rem; }
+        .message.success { border-color: #4caf50; background: #f1fff1; color: #1b5e20; }
+        .message.error   { border-color: #f44336; background: #fff1f1; color: #b71c1c; }
+        .message.running { border-color: #2196F3; background: #e3f2fd; color: #0d47a1; }
+        .btn-train { background-color: #4caf50; color: #fff; border: none; border-radius: 4px; }
+        .btn-train:disabled { background-color: #aaa; cursor: not-allowed; }
+        .btn-baseline { background-color: #ff9800; color: #fff; border: none; border-radius: 4px; }
+        .btn-baseline:disabled { background-color: #aaa; cursor: not-allowed; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff;
+                   border-top-color: transparent; border-radius: 50%;
+                   animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        hr { margin: 1.5rem 0; border: none; border-top: 1px solid #ddd; }
     </style>
 </head>
 <body>
-    <!-- Navigation bar for transitions between pages -->
     <nav style="margin-bottom: 1rem;">
         <a href="/user" style="background-color:#2196F3;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">User Dashboard</a>
         <a href="/logout" style="background-color:#f44336;color:#fff;padding:0.5rem 1rem;margin-right:0.5rem;text-decoration:none;border-radius:4px;">Logout</a>
@@ -23,6 +34,8 @@
 
     <h1>Admin Dashboard</h1>
     <p>Upload training datasets and trigger model training.</p>
+
+    <hr>
 
     <h2>Upload Normal Dataset</h2>
     <form method="post" action="/upload-normal" enctype="multipart/form-data">
@@ -38,10 +51,100 @@
         <button type="submit">Upload Fault CSV</button>
     </form>
 
-    <h2>Train Models</h2>
-    <form method="post" action="/train">
-        <button type="submit">Train Classifier and Baseline</button>
-    </form>
+    <hr>
 
+    <h2>Train Models</h2>
+    <p style="color:#555;font-size:0.9rem;">
+        Trains the RandomForest fault classifier and Z-score anomaly baseline
+        using uploaded CSV files.
+    </p>
+    <button class="btn-train" onclick="trainModels()" id="trainBtn">
+        Train Classifier and Baseline
+    </button>
+    <div id="trainMsg"></div>
+
+    <hr>
+
+    <h2>Train Anomaly Baseline (Normal Operation Data)</h2>
+    <p style="color:#555;font-size:0.9rem;">
+        Runs <code>train_baseline.py</code> — loads all
+        <code>VinIinMOSFETVdsSCRVds_[V]_ALL.csv</code> files (100 V – 240 V),
+        fits the Z-score baseline across the full operating range, and registers
+        the circuit profile with OpenAI so the AI assistant knows what normal
+        looks like for this specific converter.
+    </p>
+    <button class="btn-baseline" onclick="trainBaseline()" id="baselineBtn">
+        Run train_baseline.py
+    </button>
+    <div id="baselineMsg"></div>
+
+    <script>
+        // ── Train classifier (existing /train endpoint) ──────────────────
+        async function trainModels() {
+            const btn = document.getElementById('trainBtn');
+            const msg = document.getElementById('trainMsg');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Training…';
+            msg.className = 'message running';
+            msg.textContent = 'Training in progress — this may take a moment…';
+
+            try {
+                const res  = await fetch('/train', { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok) {
+                    msg.className = 'message success';
+                    msg.textContent = (data.messages || [data.message]).join('\n');
+                } else {
+                    msg.className = 'message error';
+                    msg.textContent = data.error || data.detail || 'Training failed.';
+                }
+            } catch (err) {
+                msg.className = 'message error';
+                msg.textContent = 'Request failed: ' + err.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Train Classifier and Baseline';
+            }
+        }
+
+        // ── Run train_baseline.py (new /train-baseline endpoint) ─────────
+        async function trainBaseline() {
+            const btn = document.getElementById('baselineBtn');
+            const msg = document.getElementById('baselineMsg');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Running train_baseline.py…';
+            msg.className = 'message running';
+            msg.textContent = 'Loading CSV files, fitting baseline, and registering with OpenAI…\nThis can take 30–90 seconds depending on file sizes.';
+
+            try {
+                const res  = await fetch('/train-baseline', { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok) {
+                    msg.className = 'message success';
+                    // Show the full log output if available
+                    const lines = [];
+                    if (data.message)        lines.push(data.message);
+                    if (data.files_loaded)   lines.push(`Files loaded: ${data.files_loaded}`);
+                    if (data.total_rows)     lines.push(`Total rows: ${data.total_rows.toLocaleString()}`);
+                    if (data.features)       lines.push(`Features: ${data.features.join(', ')}`);
+                    if (data.openai_summary) lines.push('\nOpenAI confirmation:\n' + data.openai_summary);
+                    msg.textContent = lines.join('\n') || 'Baseline training complete.';
+                } else {
+                    msg.className = 'message error';
+                    msg.textContent = data.error || data.detail || 'Baseline training failed.';
+                }
+            } catch (err) {
+                msg.className = 'message error';
+                msg.textContent = 'Request failed: ' + err.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Run train_baseline.py';
+            }
+        }
+    </script>
 </body>
 </html>
