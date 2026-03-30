@@ -48,3 +48,4 @@ pyserial
 
 google-auth 
 google-auth-requests
+joblib
