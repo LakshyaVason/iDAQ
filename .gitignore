@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+60hz/
 # Credentials and secrets
 serviceAccountKey.json
 .env
