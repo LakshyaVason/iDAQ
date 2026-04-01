@@ -7,6 +7,7 @@ import os
 import json
 import random
 import logging
+import re
 import joblib
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -104,6 +105,25 @@ def is_admin(request: Request) -> bool:
 
 def redirect_to_login() -> RedirectResponse:
     return RedirectResponse(url="/login", status_code=303)
+
+def strip_markdown(text: str) -> str:
+    # Convert headers to plain text with newline
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Convert bold and italic
+    text = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', text)
+    text = re.sub(r'_{1,3}(.+?)_{1,3}', r'\1', text)
+    # Convert bullet points to dashes with indent
+    text = re.sub(r'^\s*[-*+]\s+', '  • ', text, flags=re.MULTILINE)
+    # Convert numbered lists
+    text = re.sub(r'^\s*\d+\.\s+', lambda m: m.group().replace('.', '.'), text, flags=re.MULTILINE)
+    # Remove code fences
+    text = re.sub(r'```[\s\S]*?```', '[code block]', text)
+    text = re.sub(r'`(.+?)`', r'\1', text)
+    # Remove horizontal rules
+    text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # Collapse multiple blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 def init_firebase_admin():
@@ -675,6 +695,7 @@ Current session has {len(session_data)} data points spanning from {session_data[
             session_data=session_data,
             latest_readings=latest_readings
         )
+        response_text = strip_markdown(response_text)
         
         logger.info(f"Response generated ({len(response_text)} chars)")
         return {"response": response_text}
@@ -703,10 +724,11 @@ async def ask_rag(request: Request, user: dict = Depends(verify_firebase_token))
             logger.warning("Vector store is None - no PDFs uploaded yet")
             return {"response": "⚠️ No datasheets uploaded yet. Please:\n1. Make sure you're in RAG mode\n2. Upload a PDF using the file selector\n3. Wait for the 'Ingested X chunks' message\n4. Then try your question again"}
         
-        answer = agent.query_rag(question, session_data)
+        response_text = agent.query_rag(question, session_data)
+        response_text = strip_markdown(response_text)
         
-        logger.info(f"RAG response generated ({len(answer)} chars)")
-        return {"response": answer}
+        logger.info(f"RAG response generated ({len(response_text)} chars)")
+        return {"response": response_text}
     
     except Exception as e:
         logger.error(f"RAG error: {e}", exc_info=True)

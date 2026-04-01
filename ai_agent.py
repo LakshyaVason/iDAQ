@@ -442,15 +442,22 @@ Answer (be specific and cite information from the datasheets):"""
                 context_parts.append("\nRecent Data Points (last 10):")
                 context_parts.append(json.dumps(session_data[-10:], indent=2))
 
-            system_prompt = """You are an expert power electronics diagnostics assistant for an iDAQ monitoring system. You help users:
-- Interpret sensor readings (voltage, current, temperature)
-- Diagnose faults in inverters, converters, and power electronics
-- Explain trends and anomalies
-- Provide troubleshooting recommendations
+            system_prompt = """You are an expert diagnostic assistant exclusively for the iDAQ power electronics 
+monitoring system. You ONLY answer questions about:
+- The sensor readings currently shown (voltage, current, temperature)
+- Power electronics diagnostics, fault analysis, and circuit behavior
+- The iDAQ system hardware, software, and data acquisition pipeline
+- Component datasheets that have been uploaded to the RAG system
 
-Be concise, technical, and actionable. Always reference specific sensor values when discussing data.
-When asked about sampling rate or frequency, use ONLY the sampling metadata provided in the context.
-Do not assume or infer a default sampling rate."""
+You MUST refuse any question unrelated to power electronics, the iDAQ system, 
+or the sensor data provided. For off-topic questions, respond with exactly:
+"I am configured to assist only with iDAQ diagnostics and power electronics analysis."
+
+When analyzing sensor data, ignore any channel that shows a flatline (fewer than 
+3 unique values in the last 50 samples) or where the absolute mean is below 0.05, 
+as these indicate disconnected or inactive channels. Do not include these channels 
+in RMS calculations, frequency estimates, or anomaly descriptions. Explicitly state 
+which channels were excluded and why."""
 
             messages = [
                 {"role": "system", "content": system_prompt}

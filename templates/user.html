@@ -286,6 +286,7 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
         .status-bar.paused {
@@ -345,6 +346,31 @@
             background-color: #1a91da;
         }
 
+        .offset-group {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            margin-left: 0.25rem;
+        }
+
+        .offset-group label {
+            font-size: 0.7rem;
+            color: #657786;
+        }
+
+        .offset-input {
+            width: 72px;
+            padding: 0.25rem 0.35rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+
+        .offset-input:focus {
+            outline: none;
+            border-color: #1da1f2;
+        }
+
         .latest-values {
             margin-bottom: 1.5rem;
         }
@@ -393,6 +419,10 @@
             color: #2c3e50;
         }
 
+        .value-card .value.na {
+            color: #aaa;
+        }
+
         .value-card .unit {
             font-size: 0.75rem;
             color: #657786;
@@ -403,6 +433,71 @@
             position: relative;
             height: 400px;
             margin-bottom: 1rem;
+        }
+
+        #sensorChart {
+            cursor: ns-resize;
+        }
+
+        .measurements-panel {
+            margin-top: 1rem;
+        }
+
+        .measurements-panel summary {
+            cursor: pointer;
+            padding: 0.75rem;
+            background-color: #f5f7fa;
+            border-radius: 4px;
+            font-weight: 500;
+            user-select: none;
+        }
+
+        .measurements-panel summary:hover {
+            background-color: #e8ecef;
+        }
+
+        .measurements-content {
+            padding: 1rem 0;
+        }
+
+        .measurement-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .measurement-table th,
+        .measurement-table td {
+            border: 1px solid #e1e8ed;
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        .measurement-table th {
+            background-color: #f5f7fa;
+            color: #657786;
+            font-weight: 600;
+        }
+
+        .measurement-table select {
+            width: 100%;
+            padding: 0.35rem;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            font-size: 0.8125rem;
+        }
+
+        .measurement-actions {
+            margin-top: 0.75rem;
+        }
+
+        .btn-remove-row {
+            padding: 0.2rem 0.5rem;
+            background-color: #e0245e;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
         }
 
         .export-section {
@@ -667,6 +762,7 @@
                     Session</button>
                 <button id="simBtn" class="btn btn-secondary" onclick="toggleSimulation()">Demo Mode</button>
                 <button class="btn btn-secondary" onclick="clearGraph()">Clear</button>
+                <button class="btn btn-secondary" onclick="resetOffsets()">Reset Offsets</button>
             </div>
             <div class="axis-controls">
                 <div class="axis-control-group">
@@ -683,8 +779,8 @@
                     <div class="axis-inputs">
                         <input type="number" id="yRightMin" class="axis-input" placeholder="Min" value="0">
                         <input type="number" id="yRightMax" class="axis-input" placeholder="Max" value="20">
-                        <button class="btn-apply" onclick="updateYAxisRanges()">Apply
-                            <button class="btn-auto" onclick="autoScaleRightAxis()">Auto</button>
+                        <button class="btn-apply" onclick="updateYAxisRanges()">Apply</button>
+                        <button class="btn-auto" onclick="autoScaleRightAxis()">Auto</button>
                     </div>
                 </div>
             </div>
@@ -701,6 +797,27 @@
             <div class="chart-container">
                 <canvas id="sensorChart"></canvas>
             </div>
+            <details class="measurements-panel">
+                <summary>Signal Measurements</summary>
+                <div class="measurements-content">
+                    <table class="measurement-table">
+                        <thead>
+                            <tr>
+                                <th>Channel</th>
+                                <th>Measurement</th>
+                                <th>Window (samples)</th>
+                                <th>Value</th>
+                                <th>Unit</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="measurementTableBody"></tbody>
+                    </table>
+                    <div class="measurement-actions">
+                        <button class="btn btn-secondary" onclick="addMeasurementRow()">Add Row</button>
+                    </div>
+                </div>
+            </details>
 
             <div class="export-section">
                 <label>Export:</label>
@@ -811,18 +928,18 @@
         let firebaseEnabled = true;
 
         const channels = [
-            { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '' },
-            { id: 'V2', type: 'voltage', index: 1, color: '#e53935', baseLabel: 'V2', customName: '' },
-            { id: 'V3', type: 'voltage', index: 2, color: '#c62828', baseLabel: 'V3', customName: '' },
-            { id: 'V4', type: 'voltage', index: 3, color: '#ad1457', baseLabel: 'V4', customName: '' },
-            { id: 'C1', type: 'current', index: 0, color: '#42a5f5', baseLabel: 'C1', customName: '' },
-            { id: 'C2', type: 'current', index: 1, color: '#1e88e5', baseLabel: 'C2', customName: '' },
-            { id: 'C3', type: 'current', index: 2, color: '#1565c0', baseLabel: 'C3', customName: '' },
-            { id: 'C4', type: 'current', index: 3, color: '#0d47a1', baseLabel: 'C4', customName: '' },
-            { id: 'T1', type: 'temperature', index: 0, color: '#ffb300', baseLabel: 'T1', customName: '' },
-            { id: 'T2', type: 'temperature', index: 1, color: '#f57c00', baseLabel: 'T2', customName: '' },
-            { id: 'T3', type: 'temperature', index: 2, color: '#fb8c00', baseLabel: 'T3', customName: '' },
-            { id: 'T4', type: 'temperature', index: 3, color: '#e65100', baseLabel: 'T4', customName: '' }
+            { id: 'V1', type: 'voltage', index: 0, color: '#ef5350', baseLabel: 'V1', customName: '', offset: 0 },
+            { id: 'V2', type: 'voltage', index: 1, color: '#e53935', baseLabel: 'V2', customName: '', offset: 0 },
+            { id: 'V3', type: 'voltage', index: 2, color: '#c62828', baseLabel: 'V3', customName: '', offset: 0 },
+            { id: 'V4', type: 'voltage', index: 3, color: '#ad1457', baseLabel: 'V4', customName: '', offset: 0 },
+            { id: 'C1', type: 'current', index: 0, color: '#42a5f5', baseLabel: 'C1', customName: '', offset: 0 },
+            { id: 'C2', type: 'current', index: 1, color: '#1e88e5', baseLabel: 'C2', customName: '', offset: 0 },
+            { id: 'C3', type: 'current', index: 2, color: '#1565c0', baseLabel: 'C3', customName: '', offset: 0 },
+            { id: 'C4', type: 'current', index: 3, color: '#0d47a1', baseLabel: 'C4', customName: '', offset: 0 },
+            { id: 'T1', type: 'temperature', index: 0, color: '#ffb300', baseLabel: 'T1', customName: '', offset: 0 },
+            { id: 'T2', type: 'temperature', index: 1, color: '#f57c00', baseLabel: 'T2', customName: '', offset: 0 },
+            { id: 'T3', type: 'temperature', index: 2, color: '#fb8c00', baseLabel: 'T3', customName: '', offset: 0 },
+            { id: 'T4', type: 'temperature', index: 3, color: '#e65100', baseLabel: 'T4', customName: '', offset: 0 }
         ];
 
         const channelState = {};
@@ -981,6 +1098,9 @@
         let sessionData = [];
         let chatHistory = [];
         let ragMode = false;
+        let monitoringStarted = false;
+        let measurementRows = [];
+        let nextMeasurementRowId = 1;
         const MAX_POINTS = 500;
 
         document.addEventListener('auth-changed', (event) => {
@@ -1027,11 +1147,25 @@
                 setBtn.className = 'btn-set';
                 setBtn.onclick = () => setChannelName(ch.id);
 
+                const offsetGroup = document.createElement('div');
+                offsetGroup.className = 'offset-group';
+                const offsetLabel = document.createElement('label');
+                offsetLabel.textContent = 'Offset';
+                const offsetInput = document.createElement('input');
+                offsetInput.type = 'number';
+                offsetInput.step = '0.1';
+                offsetInput.className = 'offset-input';
+                offsetInput.value = ch.offset ?? 0;
+                offsetInput.onchange = () => setChannelOffset(ch.id, offsetInput.value);
+                offsetGroup.appendChild(offsetLabel);
+                offsetGroup.appendChild(offsetInput);
+
                 div.appendChild(checkbox);
                 div.appendChild(legend);
                 div.appendChild(baseLabel);
                 div.appendChild(nameInput);
                 div.appendChild(setBtn);
+                div.appendChild(offsetGroup);
                 grid.appendChild(div);
             });
         }
@@ -1047,7 +1181,22 @@
 
         function toggleChannel(id) {
             channelState[id] = !channelState[id];
+            renderLatestValues();
             chart.update();
+        }
+
+        function setChannelOffset(id, value) {
+            const ch = channels.find(c => c.id === id);
+            if (!ch) return;
+            const parsed = parseFloat(value);
+            ch.offset = Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function resetOffsets() {
+            channels.forEach(ch => ch.offset = 0);
+            renderChannels();
+            chart.update();
+            document.getElementById('statusBar').textContent = 'All channel offsets reset to 0';
         }
 
         function renderLatestValues() {
@@ -1065,15 +1214,22 @@
 
                 const valueSpan = document.createElement('span');
                 valueSpan.className = 'value';
-                valueSpan.textContent = value.toFixed(1);
-
-                const unit = document.createElement('span');
-                unit.className = 'unit';
-                unit.textContent = ch.type === 'voltage' ? 'V' : ch.type === 'current' ? 'A' : '°C';
+                const showNA = !monitoringStarted || !channelState[ch.id] || !Number.isFinite(value);
+                if (showNA) {
+                    valueSpan.textContent = 'N/A';
+                    valueSpan.classList.add('na');
+                } else {
+                    valueSpan.textContent = value.toFixed(1);
+                }
 
                 div.appendChild(label);
                 div.appendChild(valueSpan);
-                div.appendChild(unit);
+                if (!showNA) {
+                    const unit = document.createElement('span');
+                    unit.className = 'unit';
+                    unit.textContent = ch.type === 'voltage' ? 'V' : ch.type === 'current' ? 'A' : '°C';
+                    div.appendChild(unit);
+                }
                 grid.appendChild(div);
             });
         }
@@ -1097,6 +1253,7 @@
                 return;
             }
             monitoring = true;
+            monitoringStarted = true;
             sessionStart = Date.now();
             sessionData = [];
             document.getElementById('pauseBtn').style.display = 'none';
@@ -1263,7 +1420,8 @@
             chart.data.labels.push(timeStr);
             channels.forEach((ch, idx) => {
                 const value = s[ch.type]?.[ch.index] ?? null;
-                chart.data.datasets[idx].data.push(channelState[ch.id] ? value : null);
+                const displayValue = value === null ? null : value + (ch.offset || 0);
+                chart.data.datasets[idx].data.push(channelState[ch.id] ? displayValue : null);
             });
         });
 
@@ -1284,6 +1442,7 @@
         }
 
         chart.update('none');  // 'none' skips animation — critical at high update rate
+        updateMeasurementValues();
         updateStatusBar();
 
     } catch (error) {
@@ -1532,12 +1691,184 @@
             if (e.key === 'Enter') sendMessage();
         }
 
+        function syncAxisInputs() {
+            document.getElementById('yLeftMin').value = chart.options.scales.y.min;
+            document.getElementById('yLeftMax').value = chart.options.scales.y.max;
+            document.getElementById('yRightMin').value = chart.options.scales.y1.min;
+            document.getElementById('yRightMax').value = chart.options.scales.y1.max;
+        }
+
+        const dragState = { active: false, axisKey: null, startValue: null, currentValue: null };
+        const chartCanvas = document.getElementById('sensorChart');
+        chartCanvas.addEventListener('mousedown', (event) => {
+            const rect = chartCanvas.getBoundingClientRect();
+            const isLeftHalf = (event.clientX - rect.left) < rect.width / 2;
+            dragState.axisKey = isLeftHalf ? 'y' : 'y1';
+            dragState.active = true;
+            dragState.startValue = chart.scales[dragState.axisKey].getValueForPixel(event.offsetY);
+            dragState.currentValue = dragState.startValue;
+        });
+
+        chartCanvas.addEventListener('mousemove', (event) => {
+            if (!dragState.active) return;
+            dragState.currentValue = chart.scales[dragState.axisKey].getValueForPixel(event.offsetY);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!dragState.active) return;
+            dragState.active = false;
+            if (dragState.startValue === null || dragState.currentValue === null) return;
+            const min = Math.min(dragState.startValue, dragState.currentValue);
+            const max = Math.max(dragState.startValue, dragState.currentValue);
+            if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return;
+            chart.options.scales[dragState.axisKey].min = min;
+            chart.options.scales[dragState.axisKey].max = max;
+            chart.update();
+            syncAxisInputs();
+        });
+
+        function addMeasurementRow() {
+            if (measurementRows.length >= 4) return;
+            measurementRows.push({
+                id: nextMeasurementRowId++,
+                channelId: 'V1',
+                measurement: 'rms',
+                window: 50
+            });
+            renderMeasurementRows();
+            updateMeasurementValues();
+        }
+
+        function removeMeasurementRow(rowId) {
+            measurementRows = measurementRows.filter(row => row.id !== rowId);
+            renderMeasurementRows();
+            updateMeasurementValues();
+        }
+
+        function updateMeasurementConfig(rowId, key, value) {
+            const row = measurementRows.find(r => r.id === rowId);
+            if (!row) return;
+            row[key] = key === 'window' ? parseInt(value, 10) : value;
+            updateMeasurementValues();
+        }
+
+        function getChannelSeries(channelId, sampleWindow) {
+            const ch = channels.find(c => c.id === channelId);
+            if (!ch) return [];
+            const recent = sessionData.slice(-sampleWindow).map(sample => sample[ch.type]?.[ch.index]).filter(v => Number.isFinite(v));
+            return filterValidSamples(recent);
+        }
+
+        function filterValidSamples(values) {
+            const nonDisconnected = values.filter(v => Math.abs(v) >= 0.05);
+            if (nonDisconnected.length === 0) return [];
+            const filtered = [];
+            let streak = 1;
+            for (let i = 0; i < nonDisconnected.length; i++) {
+                if (i > 0 && nonDisconnected[i] === nonDisconnected[i - 1]) {
+                    streak += 1;
+                } else {
+                    streak = 1;
+                }
+                if (streak <= 20) {
+                    filtered.push(nonDisconnected[i]);
+                }
+            }
+            return filtered;
+        }
+
+        function computeMeasurement(values, measurement, channelType) {
+            if (values.length < 10) {
+                return { value: '—', unit: '', title: 'Insufficient valid data — check channel connection' };
+            }
+            const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+            const max = Math.max(...values);
+            const min = Math.min(...values);
+            const peakAbs = Math.max(...values.map(v => Math.abs(v)));
+            const unit = channelType === 'voltage' ? 'V' : channelType === 'current' ? 'A' : '°C';
+            const isACTyped = channelType === 'voltage' || channelType === 'current';
+
+            if ((measurement === 'rms' || measurement === 'frequency') && !isACTyped) {
+                return { value: measurement === 'frequency' ? 'N/A — not applicable' : 'N/A', unit: '' };
+            }
+
+            if (measurement === 'rms') {
+                const rms = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0) / values.length);
+                return { value: rms.toFixed(2), unit };
+            }
+            if (measurement === 'frequency') {
+                let zeroCrossings = 0;
+                for (let i = 1; i < values.length; i++) {
+                    if ((values[i - 1] <= 0 && values[i] > 0) || (values[i - 1] >= 0 && values[i] < 0)) zeroCrossings += 1;
+                }
+                if (zeroCrossings < 2) return { value: 'DC/N/A', unit: '' };
+                const seconds = values.length / 1000;
+                const freq = (zeroCrossings / 2) / seconds;
+                return { value: freq.toFixed(2), unit: 'Hz' };
+            }
+            if (measurement === 'peak') {
+                return { value: peakAbs.toFixed(2), unit };
+            }
+            if (measurement === 'p2p') {
+                return { value: (max - min).toFixed(2), unit };
+            }
+            return { value: mean.toFixed(2), unit };
+        }
+
+        function renderMeasurementRows() {
+            const tbody = document.getElementById('measurementTableBody');
+            tbody.innerHTML = '';
+            measurementRows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><select data-row="${row.id}" data-key="channelId">${channels.map(ch => `<option value="${ch.id}" ${row.channelId === ch.id ? 'selected' : ''}>${ch.baseLabel}</option>`).join('')}</select></td>
+                    <td><select data-row="${row.id}" data-key="measurement">
+                        <option value="rms" ${row.measurement === 'rms' ? 'selected' : ''}>RMS</option>
+                        <option value="frequency" ${row.measurement === 'frequency' ? 'selected' : ''}>Frequency</option>
+                        <option value="peak" ${row.measurement === 'peak' ? 'selected' : ''}>Peak</option>
+                        <option value="p2p" ${row.measurement === 'p2p' ? 'selected' : ''}>Peak-to-Peak</option>
+                        <option value="mean" ${row.measurement === 'mean' ? 'selected' : ''}>Mean (DC)</option>
+                    </select></td>
+                    <td><select data-row="${row.id}" data-key="window">
+                        <option value="50" ${row.window === 50 ? 'selected' : ''}>50</option>
+                        <option value="100" ${row.window === 100 ? 'selected' : ''}>100</option>
+                        <option value="500" ${row.window === 500 ? 'selected' : ''}>500</option>
+                    </select></td>
+                    <td id="measurement-value-${row.id}">—</td>
+                    <td id="measurement-unit-${row.id}"></td>
+                    <td><button class="btn-remove-row" onclick="removeMeasurementRow(${row.id})">×</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            tbody.querySelectorAll('select').forEach(sel => {
+                sel.addEventListener('change', (e) => {
+                    updateMeasurementConfig(parseInt(e.target.dataset.row, 10), e.target.dataset.key, e.target.value);
+                });
+            });
+        }
+
+        function updateMeasurementValues() {
+            measurementRows.forEach(row => {
+                const ch = channels.find(c => c.id === row.channelId);
+                const series = getChannelSeries(row.channelId, row.window);
+                const result = computeMeasurement(series, row.measurement, ch?.type);
+                const valueCell = document.getElementById(`measurement-value-${row.id}`);
+                const unitCell = document.getElementById(`measurement-unit-${row.id}`);
+                if (!valueCell || !unitCell) return;
+                valueCell.textContent = result.value;
+                unitCell.textContent = result.unit;
+                valueCell.title = result.title || '';
+            });
+        }
+
         window.addEventListener('load', () => {
             renderChannels();
             renderLatestValues();
+            addMeasurementRow();
             addMessage('Hello! Ask me anything about diagnostics or power electronics.', false, false);
             document.getElementById('authButton').addEventListener('click', handleAuthClick);
             updateUserBadge();
+            syncAxisInputs();
         });
 
 
@@ -1554,6 +1885,7 @@
             chart.options.scales.y1.max = yRightMax;
 
             chart.update();
+            syncAxisInputs();
 
             document.getElementById('statusBar').textContent =
                 `Axis ranges updated: Left [${yLeftMin}, ${yLeftMax}], Right [${yRightMin}, ${yRightMax}]`;
