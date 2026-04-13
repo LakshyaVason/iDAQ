@@ -277,13 +277,13 @@ Please confirm you have internalized this operating profile by summarizing:
 
     try:
         response = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            model=os.getenv("OPENAI_MODEL", "gpt-5.4-nano"),
             messages=[
                 {"role": "system", "content": SYSTEM_REGISTRATION_PROMPT},
                 {"role": "user",   "content": profile_summary}
             ],
             temperature=0.2,
-            max_tokens=800
+            #max_tokens=800
         )
 
         confirmation = response.choices[0].message.content

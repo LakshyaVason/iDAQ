@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
+
 def color_text(text: str, color: str) -> str:
     """Add color to terminal text."""
     colors = {
@@ -75,9 +76,9 @@ def main():
             client = OpenAI(api_key=openai_key)
             # Test with a minimal request
             response = client.chat.completions.create(
-                model="gpt-4-turbo-preview",
+                model="gpt-5.4-nano",
                 messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=5
+                #max_tokens=5
             )
             test_result("OpenAI API connection", True, "Successfully connected")
         except ImportError:
@@ -90,7 +91,7 @@ def main():
             elif "invalid_api_key" in error_msg:
                 test_result("OpenAI API", False, "Invalid API key")
             else:
-                test_result("OpenAI API", False, error_msg[:50])
+                test_result("OpenAI API", False, error_msg)
             all_passed = False
     else:
         test_result("OpenAI API key format", False, "Must start with 'sk-'")
@@ -147,7 +148,7 @@ def main():
             test_result("Firebase Admin library", False, "Run: pip install firebase-admin")
             all_passed = False
         except Exception as e:
-            test_result("Firebase Admin SDK", False, str(e)[:50])
+            test_result("Firebase Admin SDK", False, str(e))
             all_passed = False
     
     # Check Ollama (Optional)

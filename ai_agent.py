@@ -204,7 +204,7 @@ class DiagnosticsAgent:
             raise ValueError("OPENAI_API_KEY not found in environment")
 
         self.client = OpenAI(api_key=OPENAI_API_KEY)
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
 
         # RAG components
         self.vector_store_dir = BASE_DIR / "vector_store"
@@ -400,8 +400,7 @@ Answer (be specific and cite information from the datasheets):"""
                     {"role": "system", "content": "You are a technical documentation expert. Answer based only on the provided context."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
-                max_tokens=800
+                temperature=0.2
             )
 
             answer = response.choices[0].message.content
@@ -475,7 +474,7 @@ which channels were excluded and why."""
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=800
+                #max_tokens=800
             )
 
             return response.choices[0].message.content
@@ -522,7 +521,7 @@ Format as markdown."""
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.5,
-                max_tokens=1000
+                #max_tokens=1000
             )
 
             return response.choices[0].message.content
